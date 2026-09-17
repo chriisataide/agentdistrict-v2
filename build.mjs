@@ -14,9 +14,9 @@ const res = await build({
 });
 const js = res.outputFiles[0].text;
 const shell = readFileSync('src/shell.html', 'utf8');
-const brandImage = `data:image/png;base64,${readFileSync('img/AgentDistrict.png').toString('base64')}`;
-const faviconImage = `data:image/png;base64,${readFileSync('img/favicon.png').toString('base64')}`;
-const brainImage = `data:image/png;base64,${readFileSync('img/cerebro.png').toString('base64')}`;
+const brandImage = `data:image/png;base64,${readFileSync('assets/img/AgentDistrict.png').toString('base64')}`;
+const faviconImage = `data:image/png;base64,${readFileSync('assets/img/favicon.png').toString('base64')}`;
+const brainImage = `data:image/png;base64,${readFileSync('assets/img/cerebro.png').toString('base64')}`;
 const page = shell.replace('__BRAND_IMAGE__', brandImage).replace('__FAVICON_IMAGE__', faviconImage).replace('__BRAIN_IMAGE__', brainImage);
 const html = page.replace('<!--APP-->', () => `<script>${js}</script>`);
 mkdirSync('dist', { recursive: true });

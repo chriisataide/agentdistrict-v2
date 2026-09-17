@@ -44,27 +44,27 @@ await step('pdf: a deliverable converts to the PDF document', async () => {
 
 /* ---------- 1b. the roster + the connector parser ---------- */
 await step('roster: office.agents.json validates', async () => {
-  const { loadRoster } = await import('./roster.mjs');
+  const { loadRoster } = await import('./server/roster.mjs');
   const r = loadRoster();
   if (r.agents.length !== 35) throw new Error('agents: ' + r.agents.length);
   if (r.problems.length) throw new Error(r.problems.join(' | '));
   return `35 agents · ${r.customised} customised${r.files.length ? ' · ' + r.files.join(' + ') : ''}`;
 });
 await step('roster: bad edits are refused, not applied', async () => {
-  const { validate } = await import('./roster.mjs');
+  const { validate } = await import('./server/roster.mjs');
   const r = validate({ agents: [{ id: 'newt', name: 'PODCAST NOTES', department: 'sales', lead: true, colour: 'red' }, { id: 'ghost', name: 'X' }] });
   const n = r.agents.find(a => a.id === 'newt');
   if (n.name !== 'PODCAST NOTES' || n.department !== 'marketing' || n.lead) throw new Error('validation let a fixed field through');
   if (r.problems.length < 4) throw new Error('expected four problems, got ' + r.problems.length);
 });
 await step('roster: brief is accepted and trimmed', async () => {
-  const { validate } = await import('./roster.mjs');
+  const { validate } = await import('./server/roster.mjs');
   const r = validate({ agents: [{ id: 'piper', brief: ['Three tiers.', 'Never discount.'] }, { id: 'lexi', brief: 'x'.repeat(2500) }] });
   if (r.agents.find(a => a.id === 'piper').brief !== 'Three tiers.\nNever discount.') throw new Error('list brief not joined');
   if (r.agents.find(a => a.id === 'lexi').brief.length !== 2000 || !r.problems.some(p => /brief is over/.test(p))) throw new Error('long brief not trimmed with a warning');
 });
 await step('skills: shipped skills load and bind', async () => {
-  const { loadSkills } = await import('./skills.mjs'); const { loadRoster } = await import('./roster.mjs');
+  const { loadSkills } = await import('./server/skills.mjs'); const { loadRoster } = await import('./server/roster.mjs');
   const r = loadRoster(); const sk = loadSkills(cfg.brainPath, r.agents);
   if (sk.problems.length) throw new Error(sk.problems.join(' | '));
   const piper = r.agents.find(a => a.id === 'piper'), cmail = r.agents.find(a => a.id === 'cmail'), lexi = r.agents.find(a => a.id === 'lexi');
@@ -76,7 +76,7 @@ await step('skills: shipped skills load and bind', async () => {
   return `${sum.count} skills (${sum.shipped} shipped, ${sum.brain} in the brain) · ` + sum.skills.map(x => `${x.name}→${x.everyone ? 'everyone' : [...x.agents, ...x.departments].join('+')}`).join(' ');
 });
 await step('skills: a broken skill is refused, not applied', async () => {
-  const { loadSkills } = await import('./skills.mjs'); const { loadRoster } = await import('./roster.mjs');
+  const { loadSkills } = await import('./server/skills.mjs'); const { loadRoster } = await import('./server/roster.mjs');
   const os = await import('node:os'); const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ao-skills-')); const dir = path.join(tmp, 'Agents Office', 'skills');
   fs.mkdirSync(path.join(dir, 'ghost'), { recursive: true }); fs.mkdirSync(path.join(dir, 'nofile')); fs.mkdirSync(path.join(dir, 'proposal'));
   fs.writeFileSync(path.join(dir, 'ghost', 'SKILL.md'), '---\nagents: [nobody]\ncolour: red\n---\n# Ghost\nDo things.');
@@ -90,7 +90,7 @@ await step('skills: a broken skill is refused, not applied', async () => {
   return `${sk.problems.length} problems reported · brain proposal wins`;
 });
 await step('lessons: a correction is recorded and standing rules come back', async () => {
-  const learn = await import('./learn.mjs'); const os = await import('node:os');
+  const learn = await import('./server/learn.mjs'); const os = await import('node:os');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ao-learn-')); const a = { id: 'piper', name: 'PROPOSALS', role: 'x', does: 'y' };
   learn.record(tmp, a, { title: 'Harbourside proposal' }, 'add the booking integration for this one', { standing: false, rule: '' });
   learn.record(tmp, a, { title: 'Harbourside proposal' }, 'too long — proposals are always one page', { standing: true, rule: 'Keep every proposal to one page.' });
@@ -102,7 +102,7 @@ await step('lessons: a correction is recorded and standing rules come back', asy
   return `${r.rules.length} standing rules · ${r.oneOffs.length} one-off · agent with no file gets nothing`;
 });
 await step('interview: the lead asks five questions, then writes briefs + a skill into the brain', async () => {
-  const onboard = await import('./onboard.mjs'); const { loadRoster } = await import('./roster.mjs'); const { loadSkills } = await import('./skills.mjs'); const os = await import('node:os');
+  const onboard = await import('./server/onboard.mjs'); const { loadRoster } = await import('./server/roster.mjs'); const { loadSkills } = await import('./server/skills.mjs'); const os = await import('node:os');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ao-onboard-')); const brain = path.join(tmp, 'brain'), data = path.join(tmp, 'data'); fs.mkdirSync(brain);
   const agents = loadRoster(brain).agents; const dept = agents.filter(a => a.department === 'sales'); const lead = dept.find(a => a.lead);
   const stub = async () => JSON.stringify({ briefs: [{ id: 'lexi', brief: 'Every deal gets a next step with a date.' }, { id: 'piper', brief: 'Three options, recommend the middle.' }, { id: 'ghost', brief: 'x' }],
@@ -125,7 +125,7 @@ await step('interview: the lead asks five questions, then writes briefs + a skil
   return `5 questions · 2 briefs merged · skill wholesale-quote→piper with template · sales set up, fin not · cancel clears`;
 });
 await step('connectors: claude mcp list parses', async () => {
-  const m = await import('./mcp.mjs');
+  const m = await import('./server/mcp.mjs');
   const l = m.parseList('Checking MCP server health…\n\nclaude.ai Gmail: https://gmailmcp.googleapis.com/mcp/v1 - ✔ Connected\nclaude.ai Meta Ads: https://mcp.facebook.com/ads - ! Needs authentication\nplaywright: npx -y @playwright/mcp@latest - ✔ Connected');
   if (l.length !== 3) throw new Error('parsed ' + l.length);
   if (l[0].id !== 'claude_ai_Gmail' || l[0].key !== 'gmail' || l[0].status !== 'connected') throw new Error('gmail: ' + JSON.stringify(l[0]));
@@ -170,7 +170,7 @@ await step('routines: plain words become a schedule', async () => {
   return `${cases.length} phrasings · asks back for a missing time or day · "morning" → 08:00 flagged`;
 });
 await step('routines: outside Emails, Accounting and Sales is refused, bad ones named', async () => {
-  const rt = await import('./routines.mjs'); const { loadRoster } = await import('./roster.mjs'); const agents = loadRoster().agents;
+  const rt = await import('./server/routines.mjs'); const { loadRoster } = await import('./server/roster.mjs'); const agents = loadRoster().agents;
   const bad = rt.validate({ id: 'x', dept: 'marketing', agent: 'iggy', text: 'post the reel', when: { kind: 'daily', at: '09:00' } }, agents);
   if (!bad.problems.some(p => /próxima versão/.test(p))) throw new Error('marketing routine not refused: ' + bad.problems);
   if (!/E-mails, Contabilidade e Vendas/.test(rt.refusal('ops'))) throw new Error('refusal sentence');
@@ -186,7 +186,7 @@ await step('routines: outside Emails, Accounting and Sales is refused, bad ones 
   return 'marketing refused · unknown agent, wrong department, incomplete schedule, duplicate id all named · needsOk defaults on';
 });
 await step('routines: due fires once, a missed run catches up marked LATE, then the clock moves on', async () => {
-  const rt = await import('./routines.mjs'); const { loadRoster } = await import('./roster.mjs'); const os = await import('node:os');
+  const rt = await import('./server/routines.mjs'); const { loadRoster } = await import('./server/roster.mjs'); const os = await import('node:os');
   const agents = loadRoster().agents; const brain = fs.mkdtempSync(path.join(os.tmpdir(), 'ao-routines-')); const data = path.join(brain, 'data');
   rt.save(brain, [{ id: 'a', dept: 'emails', agent: 'elead', title: 'A', text: 'triage', when: { kind: 'weekdays', at: '08:00' } }, { id: 'p', dept: 'sales', agent: 'folo', title: 'P', text: 'chase', when: { kind: 'daily', at: '10:00' }, paused: true, needsOk: false }]);
   const l = rt.load(brain, agents); if (l.problems.length || l.routines.length !== 2) throw new Error('load: ' + l.problems);
@@ -222,21 +222,21 @@ await step('models: Claude and Codex, one precedence, the right CLI flags', asyn
   if (e({ office: 'low', model: 'opus' }).effort !== 'low' || e({ agent: 'max', office: 'low' }).from !== 'agent' || e({ routine: 'medium', agent: 'max' }).effort !== 'medium' || e({ task: 'xhigh', routine: 'medium', agent: 'max', office: 'low' }).from !== 'task') throw new Error('effort precedence');
   if (m.modelArgs('sonnet', 'max').join(' ') !== '--model sonnet --effort max' || m.modelArgs('opus', 'low').join(' ') !== '--model opus --effort low' || m.modelArgs('opus', 'nonsense').join(' ') !== '--model opus --effort high') throw new Error('effort args');
   if (m.modelProvider('codex') !== 'openai' || m.modelProvider('sonnet') !== 'claude' || p({ task: 'codex', agent: 'opus' }).model !== 'codex') throw new Error('provider routing');
-  const cx = await import('./codex.mjs');
+  const cx = await import('./server/codex.mjs');
   if (!cx.codexArgs('high').includes('model_reasoning_effort="high"') || !cx.codexArgs().includes('read-only') || cx.codexEvent({ type: 'item.completed', item: { type: 'agent_message', text: 'feito' } }).text !== 'feito' || !cx.codexEvent({ type: 'turn.completed' }).done) throw new Error('Codex CLI contract');
-  const { validate } = await import('./roster.mjs');
+  const { validate } = await import('./server/roster.mjs');
   const r = validate({ agents: [{ id: 'invo', model: 'OPUS', effort: 'High' }, { id: 'lexi', model: 'haiku', effort: 'turbo' }] });
   if (r.agents.find(a => a.id === 'invo').model !== 'opus' || r.agents.find(a => a.id === 'lexi').model !== '' || !r.problems.some(x => /sonnet, opus, fable or codex/.test(x))) throw new Error('roster model field');
   const mapped = validate({ agents: [{ id: 'lexi', model: 'codex' }] });
   if (mapped.agents.find(a => a.id === 'lexi').model !== 'codex') throw new Error('Codex roster mapping');
   if (r.agents.find(a => a.id === 'invo').effort !== 'high' || r.agents.find(a => a.id === 'lexi').effort !== '' || !r.problems.some(x => /low, medium, high, xhigh or max/.test(x))) throw new Error('roster effort field');
-  const rt = await import('./routines.mjs'); const { loadRoster } = await import('./roster.mjs');
+  const rt = await import('./server/routines.mjs'); const { loadRoster } = await import('./server/roster.mjs');
   const v = rt.validate({ dept: 'fin', agent: 'invo', text: 'x', when: { kind: 'daily', at: '09:00' }, model: 'Fable', effort: 'xhigh' }, loadRoster().agents); if (v.problems.length || v.routine.model !== 'fable' || v.routine.effort !== 'xhigh') throw new Error('routine model/effort field');
   const cv = rt.validate({ dept: 'fin', agent: 'invo', text: 'x', when: { kind: 'daily', at: '09:00' }, model: 'codex' }, loadRoster().agents); if (cv.problems.length || cv.routine.model !== 'codex') throw new Error('Codex routine mapping');
   return 'Sonnet · Opus · Fable · Codex · task > routine > agent > office';
 });
 await step('usage: the gauge parses Claude\'s answer and the office\'s own count sits underneath', async () => {
-  const u = await import('./usage.mjs');
+  const u = await import('./server/usage.mjs');
   const sample = { five_hour: { utilization: 29, resets_at: '2026-09-09T08:20:00.322898+00:00' }, seven_day: { utilization: 39.6, resets_at: '2026-09-12T03:00:00.322921+00:00' } };
   const p = u.parseUsage(sample); if (!p || p.session.percent !== 29 || p.week.percent !== 40 || !p.session.resetsAt || new Date(p.week.resetsAt).getUTCDay() !== 6) throw new Error('parse: ' + JSON.stringify(p));
   if (u.parseUsage({ nothing: true }) !== null || u.parseUsage(null) !== null) throw new Error('unknown shape must be null');
@@ -251,7 +251,7 @@ await step('usage: the gauge parses Claude\'s answer and the office\'s own count
 
 /* ---------- 1e. Agent Teams + Claude in Chrome (V3.2 (16 Sep)) ---------- */
 await step('teams: the sentence says team, the plan is checked against the seats, notes are parsed', async () => {
-  const t = await import('./teams.mjs');
+  const t = await import('./server/teams.mjs');
   for (const ok of ['as a team, write three hooks', 'get the team on this', 'spawn three teammates to plan the launch', 'split it across the desks', 'em equipe, preparar a campanha']) if (!t.intent(ok)) throw new Error('not a team: ' + ok);
   for (const no of ['write three hooks', 'draft the team offsite email', 'reply to the client']) if (t.intent(no)) throw new Error('wrongly a team: ' + no);
   if (t.askedSize('spawn three teammates') !== 3 || t.askedSize('as a team') !== null) throw new Error('askedSize');
@@ -274,7 +274,7 @@ await step('teams: the sentence says team, the plan is checked against the seats
   return 'intent · askedSize · plan (dedupe, unknown seats, cap, one desk → solo, none → the lead) · notes · section · settings · note';
 });
 await step('teams: a team routine is kept and moved to the department lead', async () => {
-  const { validate } = await import('./routines.mjs'); const { loadRoster } = await import('./roster.mjs');
+  const { validate } = await import('./server/routines.mjs'); const { loadRoster } = await import('./server/roster.mjs');
   const agents = loadRoster().agents;
   const v = validate({ id: 'wk', dept: 'sales', agent: 'piper', title: 'x', text: 'x', when: { kind: 'weekly', days: [1], at: '09:00' }, team: true }, agents);
   if (v.problems.length) throw new Error(v.problems.join(' | '));
@@ -284,7 +284,7 @@ await step('teams: a team routine is kept and moved to the department lead', asy
   return 'team:true → lexi (the Sales lead) · plain routine untouched';
 });
 await step('browser: tools.browser puts --chrome and the Chrome server in the agents\' hands; off means --no-chrome', async () => {
-  const m = await import('./mcp.mjs');
+  const m = await import('./server/mcp.mjs');
   if (m.toolId('claude-in-chrome') !== 'claude-in-chrome' || m.toolId('claude.ai Gmail') !== 'claude_ai_Gmail') throw new Error('toolId');
   m.configure({ mcp: {}, tools: { browser: true } });
   if (m.cliArgs().join() !== '--chrome') throw new Error('cliArgs on: ' + m.cliArgs());
@@ -312,7 +312,7 @@ await step('calendar: a routine can start on a date, and projects forward day by
   if (!/from 5 Jan/.test(w.describe({ kind: 'daily', at: '08:00', start: '2099-01-05' })) || /from/.test(w.describe({ kind: 'daily', at: '08:00', start: '2020-01-05' }))) throw new Error('describe start');
   if (w.valid({ kind: 'daily', at: '08:00', start: 'next week' })) throw new Error('a bad start date passed');
   const pk = w.fromPicker('mon', '09:30', '2026-10-05'); if (pk.start !== '2026-10-05' || pk.days[0] !== 1) throw new Error('picker start: ' + JSON.stringify(pk));
-  const { validate } = await import('./routines.mjs'); const { loadRoster } = await import('./roster.mjs');
+  const { validate } = await import('./server/routines.mjs'); const { loadRoster } = await import('./server/roster.mjs');
   const v = validate({ id: 'oct', dept: 'emails', agent: 'elead', title: 'x', text: 'x', when: { kind: 'weekdays', at: '08:00', start: '2026-10-05' } }, loadRoster().agents); if (v.problems.length || v.routine.when.start !== '2026-10-05') throw new Error('routine start lost: ' + v.problems.join(' | '));
   return 'start date honoured · past start ignored · 3 Mondays projected · described "from 5 Jan" · picker + routines carry start';
 });

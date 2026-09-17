@@ -16,7 +16,7 @@
 // agent does anything outbound. Switch it off for read-only routines.
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe as describeSchedule, nextRun, valid } from './src/when.js';
+import { describe as describeSchedule, nextRun, valid } from '../src/when.js';
 const describe = when => describeSchedule(when, 'pt-BR');
 
 export const ALLOWED = ['emails', 'fin', 'sales'];

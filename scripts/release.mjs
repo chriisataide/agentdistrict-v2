@@ -1,28 +1,31 @@
 // Agents Office — cut a clean public release from this working copy.
 //
 //   node scripts/release.mjs                 → assembles dist/release/ (inspect it)
-//   node scripts/release.mjs --push          → … and pushes `main` + a new tag to the public repo,
+//   AO_RELEASE_REPO=owner/repo node scripts/release.mjs --push
+//                                            → … and pushes `main` + a new tag to that repo,
 //                                              then creates a GitHub pre-release with a zip
 //
 // The working copy is the private source of truth (NOTES.md, shots, the vault-backed local config).
 // The release is a fresh assembly: whitelisted files only, the Brain graph rebuilt from the SAMPLE
-// brain (never from a private vault), the release .gitignore, and the ajsahni author identity.
+// brain (never from a private vault) and the project .gitignore.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { ROOT } from '../config.mjs';
 
-const PUBLIC = 'git@github.com:ajsahni/agents-office.git';
-const AUTHOR = ['AJ Sahni', '32712407+ajsahni@users.noreply.github.com'];
+const REPO = process.env.AO_RELEASE_REPO || '';
+const PUBLIC = `git@github.com:${REPO}.git`;
+const AUTHOR = [process.env.AO_RELEASE_AUTHOR_NAME || 'Christopher Ataide', process.env.AO_RELEASE_AUTHOR_EMAIL || '128170464+chriisataide@users.noreply.github.com'];
 const BRANCH = 'main'; // the repo page IS the product page
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const TAG = 'v' + pkg.version;
 const push = process.argv.includes('--push');
+if (push && !/^[\w.-]+\/[\w.-]+$/.test(REPO)) throw new Error('Defina AO_RELEASE_REPO=usuario/repositorio antes de publicar.');
 const OUT = path.join(ROOT, 'dist', 'release');
 
-const FILES = ['src', 'assets/mcp/tiles', 'assets/mcp/bake.py', 'assets/mcp/rebake.py', 'assets/kode-mono-600.woff2', 'brain', 'scripts/release.mjs',
-  'build.mjs', 'graph-build.mjs', 'serve.mjs', 'config.mjs', 'mcp.mjs', 'roster.mjs', 'check.mjs', 'setup', 'package.json', 'package-lock.json',
-  'office.config.json', 'office.agents.json', 'skills.mjs', 'skills', 'learn.mjs', 'onboard.mjs', 'routines.mjs', 'usage.mjs', 'teams.mjs', 'CLAUDE.md', 'README.md', 'SKILLS.md', 'CHANGELOG.md', 'LICENSE', 'assets/readme-hero.jpg', 'assets/readme-calendar.jpg'];
+const FILES = ['src', 'assets', 'brain', 'server', 'scripts/release.mjs', 'scripts/pdf.mjs',
+  'build.mjs', 'graph-build.mjs', 'serve.mjs', 'config.mjs', 'check.mjs', 'setup', 'package.json', 'package-lock.json',
+  'office.config.json', 'office.agents.json', 'skills', 'CLAUDE.md', 'README.md', 'README.pt-BR.md', 'SKILLS.md', 'CHANGELOG.md', 'LICENSE'];
 
 const run = (cmd, args, opts = {}) => { const r = spawnSync(cmd, args, { stdio: 'pipe', encoding: 'utf8', ...opts }); if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')}: ${(r.stderr || r.stdout).trim()}`); return r.stdout; };
 
@@ -35,15 +38,20 @@ for (const f of FILES) {
   const src = path.join(ROOT, f); if (!fs.existsSync(src)) { console.log('  (skip, missing)', f); continue; }
   fs.cpSync(src, path.join(OUT, f), { recursive: true, filter: p => !/(^|\/)(Agents Office|\.DS_Store|node_modules)(\/|$)/.test(p) });
 }
-fs.copyFileSync(path.join(ROOT, '.gitignore.release'), path.join(OUT, '.gitignore'));
+fs.copyFileSync(path.join(ROOT, '.gitignore'), path.join(OUT, '.gitignore'));
 fs.mkdirSync(path.join(OUT, 'dist'), { recursive: true }); fs.copyFileSync(path.join(ROOT, 'dist', 'command-centre-v2.html'), path.join(OUT, 'dist', 'command-centre-v2.html')); // the built page: the only thing under dist/ that ships
 // the shipped braingraph.js must come from the sample brain — guard against a private vault leaking
 const bg = fs.readFileSync(path.join(OUT, 'src', 'braingraph.js'), 'utf8');
 if (!/MOC-Sales/.test(bg) || /sahni|territool/i.test(bg)) throw new Error('braingraph.js does not look like the sample brain — refusing to release');
-for (const m of fs.readFileSync(path.join(ROOT, 'serve.mjs'), 'utf8').matchAll(/from '\.\/([\w-]+\.mjs)'/g)) if (!fs.existsSync(path.join(OUT, m[1]))) throw new Error(`serve.mjs imports ${m[1]} but it is not in the release whitelist — add it to FILES`); // beta.2 of 3.2 shipped without teams.mjs
+for (const name of ['serve.mjs', ...fs.readdirSync(path.join(OUT, 'server')).filter(f => f.endsWith('.mjs')).map(f => `server/${f}`)]) {
+  const file = path.join(OUT, name);
+  for (const m of fs.readFileSync(file, 'utf8').matchAll(/from ['"](\.[^'"]+)['"]/g)) {
+    if (!fs.existsSync(path.resolve(path.dirname(file), m[1]))) throw new Error(`${name} imports ${m[1]} but it is not in the release whitelist — add it to FILES`);
+  }
+}
 console.log('  files:', fs.readdirSync(OUT).join(' '));
 
-if (!push) { console.log(`✓ Release assembled in ${path.relative(ROOT, OUT)}. Add --push to publish ${BRANCH} + ${TAG}.`); process.exit(0); }
+if (!push) { console.log(`✓ Release assembled in ${path.relative(ROOT, OUT)}. Set AO_RELEASE_REPO=owner/repo and add --push to publish ${BRANCH} + ${TAG}.`); process.exit(0); }
 
 console.log('→ cloning the public repo');
 const TMP = fs.mkdtempSync('/tmp/agents-office-release-');
@@ -68,8 +76,8 @@ console.log('→ zip + GitHub pre-release');
 const zip = path.join(TMP, `agents-office-${TAG}.zip`);
 run('zip', ['-qr', zip, '.', '-x', '.git/*'], { cwd: pub });
 const notes = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8').split('\n## ')[1] || TAG;
-const rel = spawnSync('gh', ['release', 'view', TAG, '-R', 'ajsahni/agents-office'], { encoding: 'utf8' });
+const rel = spawnSync('gh', ['release', 'view', TAG, '-R', REPO], { encoding: 'utf8' });
 if (rel.status === 0) console.log(`  release ${TAG} already exists and is immutable — bump package.json to ship a new zip`);
-else run('gh', ['release', 'create', TAG, zip, '--prerelease', '--title', `Agents Office ${TAG}`, '--notes', '## ' + notes, '--target', BRANCH, '-R', 'ajsahni/agents-office']);
-if (rel.status === 0) spawnSync('gh', ['release', 'edit', TAG, '--target', BRANCH, '-R', 'ajsahni/agents-office']);
-console.log(`✓ Published ${BRANCH} @ ${TAG} → https://github.com/ajsahni/agents-office/tree/${BRANCH}  ·  https://github.com/ajsahni/agents-office/releases/tag/${TAG}`);
+else run('gh', ['release', 'create', TAG, zip, '--prerelease', '--title', `Agent District ${TAG}`, '--notes', '## ' + notes, '--target', BRANCH, '-R', REPO]);
+if (rel.status === 0) spawnSync('gh', ['release', 'edit', TAG, '--target', BRANCH, '-R', REPO]);
+console.log(`✓ Published ${BRANCH} @ ${TAG} → https://github.com/${REPO}/tree/${BRANCH}  ·  https://github.com/${REPO}/releases/tag/${TAG}`);

@@ -59,3 +59,19 @@ Em `office.config.json`, altere o nome do negócio e o caminho da pasta de notas
 Para abrir a interface original em inglês, use `http://localhost:4520/?lang=en`.
 
 Após alterar o código da interface, execute `npm run build` e recarregue a página. Para verificar o projeto, execute `npm run check`.
+
+## Estrutura de pastas
+
+| Caminho | Conteúdo |
+| --- | --- |
+| `serve.mjs`, `build.mjs`, `check.mjs` | Comandos principais do servidor, build e verificação |
+| `server/` | Módulos internos de agentes, conectores, rotinas, aprendizado e integração Codex |
+| `src/` | Interface 3D, painéis e componentes do navegador |
+| `assets/img/` | Logo, favicon e ilustração do Cérebro |
+| `assets/mcp/` | Imagens dos conectores |
+| `brain/` | Notas Markdown lidas pelos agentes |
+| `skills/` | Instruções reutilizáveis dos agentes |
+| `scripts/` | Utilitários de PDF e montagem de versões |
+| `dist/` | Interface gerada por `npm run build` |
+
+As configurações editáveis (`office.config.json` e `office.agents.json`) ficam na raiz. As versões `.local.json` e os dados de execução permanecem ignorados pelo Git.

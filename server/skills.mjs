@@ -18,8 +18,8 @@
 // inlined into the prompt (capped — see LIMITS); binaries are listed by name only.
 import fs from 'node:fs';
 import path from 'node:path';
-import { ROOT } from './config.mjs';
-import { DEPT_KEYS } from './src/data.js';
+import { ROOT } from '../config.mjs';
+import { DEPT_KEYS } from '../src/data.js';
 
 export const SHIPPED = path.join(ROOT, 'skills');
 export const brainDir = brainPath => path.join(brainPath, 'Agents Office', 'skills');

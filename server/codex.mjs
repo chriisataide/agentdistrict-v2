@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { normEffort } from './src/models.js';
+import { normEffort } from '../src/models.js';
 
 const binary = () => process.env.AO_CODEX_BIN || 'codex';
 const cwd = path.join(os.tmpdir(), 'agent-district-codex');

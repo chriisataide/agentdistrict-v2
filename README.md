@@ -42,8 +42,8 @@ The full list, release by release: [CHANGELOG](CHANGELOG.md).
 ## Install
 
 ```bash
-git clone https://github.com/ajsahni/agents-office.git
-cd agents-office
+git clone https://github.com/chriisataide/agentdistrict-v2.git
+cd agentdistrict-v2
 ./setup          # checks Node, git and Claude; installs; builds; boots once
 npm start        # → http://localhost:4520
 ```
@@ -371,16 +371,18 @@ first thing to run after any change.
 |---|---|
 | `src/` | The office: `main.js` scene, `tasks.js` task panel, `brain.js` the Brain, `mcp.js` connectors, `data.js` departments and roster, `v1data.js` agent personalities |
 | `serve.mjs` | The local server: routing, deliverables, chat, the live Brain graph |
-| `mcp.mjs` | Connectors: `claude mcp list` parsed, allow/deny, the tools each agent may call |
-| `roster.mjs` · `office.agents.json` | The 35 agents: names, roles, what they do, their tools, their briefs (`<brain>/Agents Office/agents.json` and `office.agents.local.json` override) |
-| `skills.mjs` · `skills/` | Skills: how a kind of work is done, bound to agents or departments (`<brain>/Agents Office/skills/` is yours) |
-| `learn.mjs` | Corrections from `revise: …` recorded per agent in `<brain>/Agents Office/feedback/`; standing rules go back into the prompt |
-| `onboard.mjs` | The lead's five-question set-up interview; writes briefs and a skill into the brain |
-| `src/models.js` · `codex.mjs` · `usage.mjs` | Claude and Codex model routing; the Codex CLI runner; the Claude usage gauge |
-| `routines.mjs` · `src/when.js` | Routines: the timetable in `<brain>/Agents Office/routines.json`, plain words → a schedule, the clock and the catch-up (run state in `data/routines.json`) |
+| `server/` | Server modules for connectors, agents, skills, learning, routines, usage, teams and Codex |
+| `server/mcp.mjs` | Connectors: `claude mcp list` parsed, allow/deny, the tools each agent may call |
+| `server/roster.mjs` · `office.agents.json` | The 35 agents: names, roles, what they do, their tools, their briefs (`<brain>/Agents Office/agents.json` and `office.agents.local.json` override) |
+| `server/skills.mjs` · `skills/` | Skills: how a kind of work is done, bound to agents or departments (`<brain>/Agents Office/skills/` is yours) |
+| `server/learn.mjs` | Corrections from `revise: …` recorded per agent in `<brain>/Agents Office/feedback/`; standing rules go back into the prompt |
+| `server/onboard.mjs` | The lead's five-question set-up interview; writes briefs and a skill into the brain |
+| `src/models.js` · `server/codex.mjs` · `server/usage.mjs` | Claude and Codex model routing; the Codex CLI runner; the Claude usage gauge |
+| `server/routines.mjs` · `src/when.js` | Routines: the timetable in `<brain>/Agents Office/routines.json`, plain words → a schedule, the clock and the catch-up (run state in `data/routines.json`) |
 | `SKILLS.md` | The guide to briefs and skills |
 | `CLAUDE.md` | What Claude Code does when you ask it to change agents, write a skill, put a routine on the timetable, or change connectors in this folder |
 | `graph-build.mjs` | Reads your brain folder and lays out the graph |
+| `assets/img/` | Agent District logo, favicon and Cérebro illustration |
 | `dist/command-centre-v2.html` | The office as one built file (`node build.mjs` from `src/`); the server serves it, or double-click it for the demo |
 | `brain/` | The sample brain |
 | `data/tasks.json` | Your tasks (created on first run, ignored by git) |

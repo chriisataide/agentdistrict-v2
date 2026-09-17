@@ -7,9 +7,9 @@
 // skills.mjs. See CLAUDE.md for how to change agents with Claude Code.
 import fs from 'node:fs';
 import path from 'node:path';
-import { ROOT, loadConfig } from './config.mjs';
-import { AGENTS, DEPTS } from './src/data.js';
-import { V1 } from './src/v1data.js';
+import { ROOT, loadConfig } from '../config.mjs';
+import { AGENTS, DEPTS } from '../src/data.js';
+import { V1 } from '../src/v1data.js';
 
 export const FILE = path.join(ROOT, 'office.agents.json');
 export const LOCAL = path.join(ROOT, 'office.agents.local.json');
