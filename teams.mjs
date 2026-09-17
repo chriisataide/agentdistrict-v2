@@ -27,7 +27,7 @@ export function settings(cfg) {
 
 // "as a team", "team up", "get the team on it", "spawn three teammates", "split it across the desks"
 const INTENT = /\b(as a team|team up|team this|get the (whole )?team|the (whole )?team (on|to|should|can)|with the team|(spawn|use|get) (\d+|two|three|four|five|a few|some) teammates?|\d+ teammates|split (it|this|the work) (up|across|between)|teammates|team:|whole department)\b/i;
-export const intent = text => INTENT.test(String(text || ''));
+export const intent = text => INTENT.test(String(text || '')) || /(?:^|[\s,;])(?:em equipe|com a equipe|equipe:|trabalho em equipe|divida (?:a tarefa|o trabalho) entre os agentes|use \d+ agentes)(?=$|[\s,;])/i.test(String(text || ''));
 
 const num = { two: 2, three: 3, four: 4, five: 5, six: 6 };
 export function askedSize(text) { // "spawn three teammates" → 3, else null
@@ -37,7 +37,7 @@ export function askedSize(text) { // "spawn three teammates" → 3, else null
 
 export function planPrompt({ business, deptName, lead, seats, text, title, max, notes }) {
   const system = `You are ${lead.name}, the lead of the ${deptName} department of ${business}. You are splitting one request across your team. ` +
-    'Return ONLY a JSON object — no prose, no code fences.';
+    'Return ONLY a JSON object — no prose, no code fences. Write title, text and why in Brazilian Portuguese (pt-BR).';
   const user = `Your team (id · name · role · what they do${seats.some(s => s.skills?.length) ? ' · skills' : ''}):\n` +
     seats.map(s => `- ${s.id}${s.lead ? ' (you, the lead)' : ''} · ${s.name} · ${s.role} · ${s.does}${s.skills?.length ? ' · skills: ' + s.skills.join(', ') : ''}`).join('\n') +
     `\n\nThe owner's request: "${text}"${title && title !== text ? `\n(Task title: ${title})` : ''}\n\n` +
@@ -103,7 +103,7 @@ export function synthPrompt({ task, pieces, messages, nameOf, feedback }) {
   const notes = (messages || []).length ? '\n\nNOTES THE TEAM LEFT\n' + messages.map(m => `- ${nameOf(m.from)} → ${m.to === 'lead' ? 'you' : nameOf(m.to)}: ${m.text}`).join('\n') : '';
   return `Task: ${task.title}\nOwner's request: ${task.text}\n\nYour team has done the pieces below. Write the finished deliverable from them: keep the substance, cut repetition, resolve any clash using the notes, and fill only what is plainly missing (mark it (assumed)). ` +
     'Plain text: a short heading, then short sections or bullets. At most 450 words unless a skill or the owner\'s instructions set a different shape — those win. ' +
-    'End with one line: "Team: NAME did X · NAME did Y".' +
+    'End with one line: "Equipe: NOME fez X · NOME fez Y". Write the entire deliverable in Brazilian Portuguese (pt-BR).' +
     `\n\nTHE PIECES\n${parts}${notes}` +
     (feedback ? `\n\nThe owner reviewed your previous version and asked for changes: "${feedback}"\nPrevious version:\n${task.result}` : '');
 }

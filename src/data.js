@@ -1,5 +1,7 @@
 // Agents Office v2 — roster + design tokens (ported from v1 command-centre.html)
 import { applyData } from './profile.js';
+import { ptBR } from './pt-br.js';
+import { APPROVAL_ASKS_PT, APPROVAL_BY_AGENT_PT, WORKLINES_PT } from './demo-pt.js';
 
 // Nominal.so tokens (locked design language, 30 Jul 2026)
 export const TOKENS = {
@@ -89,10 +91,10 @@ export const BILLBOARDS = {
   delivery:  [{ id: 'reports',   label: 'REPORTS SENT',     val: 9 }],
   sales:     [{ id: 'leads',     label: 'LEADS ENRICHED',   val: 47 },
               { id: 'callhrs',   label: 'CALL HRS ROUTED',  val: 9.5, fmt: v => v.toFixed(1) + 'h', step: 0.4 }],
-  marketing: [{ id: 'adspend',   label: 'AD SPEND TODAY',   val: 684, fmt: v => '$' + Math.round(v).toLocaleString('en-NZ'), step: 12 }],
+  marketing: [{ id: 'adspend',   label: 'AD SPEND TODAY',   val: 684, fmt: v => '$' + Math.round(v).toLocaleString(ptBR ? 'pt-BR' : 'en-NZ'), step: 12 }],
   ops:       [{ id: 'proposals', label: 'PROPOSALS SENT',   val: 6 }],
   fin:       [{ id: 'invoices',  label: 'INVOICES ISSUED', val: 23 }],
-  brain:     [{ id: 'notes',     label: 'NOTES INDEXED',    val: 1204, fmt: v => Math.round(v).toLocaleString('en-NZ') }],
+  brain:     [{ id: 'notes',     label: 'NOTES INDEXED',    val: 1204, fmt: v => Math.round(v).toLocaleString(ptBR ? 'pt-BR' : 'en-NZ') }],
 };
 
 // Approval asks (agent requests → AJ decides; v1 flavour).
@@ -172,3 +174,8 @@ export const WORKLINES = {
 
 // INDUSTRY PROFILE (12 Sep 2026): a per-industry demo file rewrites pods, seats, rows, asks and screen lines in place. No-op without window.PROFILE.
 applyData({ DEPTS, AGENTS, BILLBOARDS, APPROVAL_ASKS, APPROVAL_BY_AGENT, WORKLINES });
+if (ptBR) {
+  for (const [k, v] of Object.entries(APPROVAL_ASKS_PT)) APPROVAL_ASKS[k] = v;
+  Object.assign(APPROVAL_BY_AGENT, APPROVAL_BY_AGENT_PT);
+  for (const [k, v] of Object.entries(WORKLINES_PT)) WORKLINES[k] = v;
+}

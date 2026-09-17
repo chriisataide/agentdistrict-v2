@@ -1,6 +1,8 @@
-# Agents Office v3 (Beta)
+# Agent District
 
-![Agents Office — six department pods around the Brain, with the Task Status panel](assets/readme-hero.jpg)
+**Português brasileiro:** [guia de uso em pt-BR](README.pt-BR.md).
+
+![Agent District — six department pods around the Brain, with the Task Status panel](assets/readme-hero.jpg)
 
 A 3D isometric office where AI agents do real work on your own Claude login.
 
@@ -14,8 +16,8 @@ machine.
 
 **License, in plain English:** free for personal and internal use. You may not sell it, resell it,
 or build a paid product on it. (Formal terms: PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE).)
-The page carries the Sahni.ai mark at the bottom-left and a licence line along the bottom; the licence asks
-that notices stay, so leave them in place.
+The interface footer shows iCodev Tecnologia e Inovação and links to https://icodev.com.br.
+The software's formal terms remain in [LICENSE](LICENSE).
 
 ## Latest updates
 
@@ -24,7 +26,7 @@ that notices stay, so leave them in place.
 - **The calendar (P)** — 17 Sep 2026 · Everything on the day it belongs to: finished tasks, today's work, tasks you have scheduled, and every routine projected forward. Click any day to schedule a task for it, or switch on REPEAT to start a routine from that date. A rail lists the routines themselves. Month and week, dark mode too. → [The calendar](#the-calendar-everything-on-the-day-it-belongs-to)
 - **Agent Teams** — 16 Sep · Press TEAM or say "as a team": the department lead splits the job across its desks, they work at the same time, leave notes for each other, and the lead writes the final. → [Agent Teams](#agent-teams-the-lead-splits-it-across-the-desks)
 - **Claude in Chrome** — 16 Sep · The agents can use your own browser for any site you are signed in to, under the same read-freely, act-only-when-asked rule. → [Claude in Chrome](#claude-in-chrome-the-agents-can-use-your-browser)
-- **Models by name, effort, and the usage gauge** — 9 Sep · Sonnet, Opus or Fable per task, routine, agent or office; an effort menu; your plan's session and week in the top bar. → [Which model](#which-model-and-how-much-of-your-plan)
+- **Models by name, effort, and the usage gauge** — Sonnet, Opus, Fable or Codex per task, routine, agent or office; an effort menu; your Claude plan's session and week in the top bar. → [Which model](#which-model-and-how-much-of-your-plan)
 - **Routines** — 9 Sep · Tasks on the office's own clock, with "needs my OK" before anything goes out. → [Routines](#routines-the-office-runs-on-its-own-clock)
 - **The lead interviews you, and the agents learn from corrections** — 7 Sep · Say "set up" to a department lead; every `revise: …` becomes a standing rule. → [Teach the agents](#teach-the-agents-how-you-work)
 
@@ -292,12 +294,18 @@ paired yet? The tile is grey and says what to do on hover. `tools.browser: false
 
 ## Which model, and how much of your plan
 
-Every run names its model. Three, by name: **Sonnet**, **Opus**, **Fable**. Sonnet is the
+Every run names its model: **Sonnet**, **Opus**, **Fable** (Claude) or **Codex** (OpenAI). Sonnet is the
 default for everything, including the routing call that names the agent. The menu beside REPEAT
 in the bar shows the office default; change it and it applies to the task you are typing (or the
 routine, with REPEAT on). Four places, one precedence: the task beats the routine beats the agent
 (a `model` field in the roster) beats the office default (`model` in `office.config.json`). Every
 card says which model ran and, if it was set above the default, where.
+
+Codex reuses the local Codex CLI login (`codex login`, through ChatGPT or an API key). Its
+tasks run in an isolated read-only directory and can draft results; Claude retains the
+office's MCP connectors and handles approved outbound actions. The initial agent routing
+call still uses Claude. The model tiles in the top bar show both providers' connection
+states; the usage gauge beside them measures Claude only.
 
 **Effort** sits beside the model: AUTO, Low, Medium, High, Extra high, Max, the levels Claude Code
 itself uses. AUTO is the model's own level (Opus runs at high). Set it on a task, a routine, an
@@ -368,7 +376,7 @@ first thing to run after any change.
 | `skills.mjs` · `skills/` | Skills: how a kind of work is done, bound to agents or departments (`<brain>/Agents Office/skills/` is yours) |
 | `learn.mjs` | Corrections from `revise: …` recorded per agent in `<brain>/Agents Office/feedback/`; standing rules go back into the prompt |
 | `onboard.mjs` | The lead's five-question set-up interview; writes briefs and a skill into the brain |
-| `src/models.js` · `usage.mjs` | The three models by name and their CLI flags; the usage gauge (Claude's numbers, the office's own count underneath) |
+| `src/models.js` · `codex.mjs` · `usage.mjs` | Claude and Codex model routing; the Codex CLI runner; the Claude usage gauge |
 | `routines.mjs` · `src/when.js` | Routines: the timetable in `<brain>/Agents Office/routines.json`, plain words → a schedule, the clock and the catch-up (run state in `data/routines.json`) |
 | `SKILLS.md` | The guide to briefs and skills |
 | `CLAUDE.md` | What Claude Code does when you ask it to change agents, write a skill, put a routine on the timetable, or change connectors in this folder |
@@ -376,6 +384,27 @@ first thing to run after any change.
 | `dist/command-centre-v2.html` | The office as one built file (`node build.mjs` from `src/`); the server serves it, or double-click it for the demo |
 | `brain/` | The sample brain |
 | `data/tasks.json` | Your tasks (created on first run, ignored by git) |
+
+## Who may open it
+
+The office has no accounts. Every task it runs uses **your** Claude login and **your** connectors,
+so by default it listens on this machine only — `http://localhost:4520`, nothing on the network.
+
+To let the team open it from their own computers, give it a host and a password:
+
+```json
+// office.config.local.json
+{ "host": "0.0.0.0", "password": "something-only-the-team-knows" }
+```
+
+or `AO_HOST=0.0.0.0 AO_PASSWORD=… npm start`. On start it prints the address to hand round.
+The browser asks for the password (any username); every page and every API call needs it.
+**Binding beyond localhost with no password is refused** — the office exits and says so, rather
+than sitting open on the network.
+
+The password travels base64-encoded over plain HTTP, which is fine on an office LAN you trust.
+Put it behind HTTPS or a tunnel before it is reachable from outside the building. Everyone who has
+it shares one office: the same brain, the same task board, the same Claude plan.
 
 ## Privacy
 

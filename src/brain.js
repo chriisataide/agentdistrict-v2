@@ -1,11 +1,8 @@
-// Agents Office V3.6 — the Brain as an etched floor (AJ, 6 Sep 2026: option B + the panel strip).
-// The particle nebula is gone. The vault's wiki-link graph (src/braingraph.js, baked by
-// graph-build.mjs) is drawn into the floor of the centre pod as faint ink line-work: texture at
-// overview, a graph when you lean in. It moves only when an agent READS (a note glints green and a
-// dashed line runs to the desk for two seconds) or WRITES (a finished task becomes a new note off
-// its department's hub). The Task Status panel carries a small Brain strip — last read, notes
-// added today, Open the Brain — and G / clicking the pod opens the full-screen Obsidian graph.
+// Illustrated centre pod and the vault's wiki-link graph. The pod shows the supplied transparent
+// brain image; the full graph, note content and relationships live in the overlay. Agent reads
+// briefly glint on the illustration, while writes add notes to the graph and task-panel strip.
 import * as THREE from 'three';
+import { ptBR } from './pt-br.js';
 import { BRAIN as BRAIN0 } from './braingraph.js';
 import { PROFILE } from './profile.js';
 const BRAIN = (PROFILE && PROFILE.graph && PROFILE.graph.nodes && PROFILE.graph.nodes.length) ? PROFILE.graph : BRAIN0; // INDUSTRY PROFILE: the demo company's own graph
@@ -15,8 +12,10 @@ const GROUP_COL = {
   '40-Marketing': '#E69393', '50-Products': '#98A5EF', '60-Sales': '#EADC8F', '70-Delivery': '#8FD3F4',
   '10-Business': '#BFA2E3', '00-Meta': '#F2B33D', '90-Skills': '#5ADEB7', '30-Customers': '#D1DECD',
   '95-Agents': '#B0ADA3', '80-Finance': '#A9B6F0', '05-Inbox': '#B0ADA3',
+  '20-Brand': '#D9BEA1', 'Agents Office': '#78D4B2',
 };
-const GROUP_NAME = g => g.replace(/^\d\d-/, '');
+const GROUP_PT = { Meta: 'Metadados', Business: 'Negócio', Brand: 'Marca', Customers: 'Clientes', Products: 'Produtos', Sales: 'Vendas', Delivery: 'Entregas', Finance: 'Finanças', Operations: 'Operações', Skills: 'Habilidades', Agents: 'Agentes', Inbox: 'Caixa de entrada', Marketing: 'Marketing', Emails: 'E-mails', 'Agents Office': 'Agent District' };
+const GROUP_NAME = g => { const name = g.replace(/^\d\d-/, ''); return ptBR ? GROUP_PT[name] || name : name; };
 // which folders each department reads from (and writes into)
 const DEPT_FOLDERS = {
   marketing: ['40-Marketing', '20-Brand'], sales: ['60-Sales', '50-Products', '30-Customers'],
@@ -26,7 +25,7 @@ const DEPT_FOLDERS = {
 let INK = '21,20,20'; // dark mode swaps this for the cream ink (setTheme)
 const GREEN = '#1E9070';
 const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 42);
-const timeStr = ts => new Date(ts).toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+const timeStr = ts => new Date(ts).toLocaleTimeString(ptBR ? 'pt-BR' : 'en-NZ', { hour: 'numeric', minute: '2-digit', hour12: !ptBR }).toLowerCase();
 const agentOf = id => AGENTS.find(a => a.id === id);
 
 export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCamera }) {
@@ -49,50 +48,34 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
     return cands[0];
   }
 
-  /* ---------- the Brain, as the approved mock shows it ----------
-     The mock's graph faces the camera: an upright ink drawing hovering over the pod (that is what
-     reads as a 3D object in the artifact). So the drawing lives on a camera-facing sprite, 15.4 ×
-     9.2 world units, centred above the slab — the 90 most linked notes in their own compact layout
-     (BRAIN.floor), edges rgba(ink,.224) at W/260, dots rgba(ink,.44) sized (0.8 + √links·0.28)·W/130,
-     the layout squashed to 0.6 vertically as the mock's sq .58 was. Every 6 s the biggest hub
-     pulses green for 2 s — the mock's glint. Colour and names live in the overlay. */
-  const BW = 17, BH = BW * 0.6;            // world size of the billboard
-  const PX = 1024, PY = Math.round(PX * 0.6);
-  const CENTRE = new THREE.Vector3(0, 1.3, 0);   // centred on the slab, as in the mock
+  /* ---------- illustrated Brain on the centre pod ----------
+     The supplied transparent PNG is embedded by build.mjs, so both the server and standalone
+     HTML show the same image. The full note graph remains available in the overlay. */
+  // Keep the artwork inside the 16 × 16 plinth and bring its visual centre toward the front half.
+  const BW = 13.4, BH = BW * 1215 / 1295;
+  const CENTRE = new THREE.Vector3(3.5, BH / 2 + 0.2, 3.5);
   let floorPos = new Map(BRAIN.floor.map(([x, y], i) => [i, { x, y }]));
   const onFloor = n => floorPos.has(n.i);
   const FP = n => floorPos.get(n.i);
-  const cv = document.createElement('canvas'); cv.width = PX; cv.height = PY;
-  const ctx = cv.getContext('2d');
-  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  const board = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-  board.scale.set(BW, BH, 1); board.position.copy(CENTRE); board.renderOrder = 4;
-  board.userData.dept = 'brain';
-  brainGroup.add(board);
-  const FS = PX * 0.64, C = PX / 2, CY = PY / 2;                       // the mock filled its diamond; the sprite clips the spill
-  const P = n => { const f = FP(n); return [C + f.x * FS, CY + f.y * FS * 0.6]; };  // unit → canvas
+  const artUrl = document.getElementById('brainArtSource')?.src;
+  let figure = null;
+  if (artUrl) {
+    const art = new THREE.TextureLoader().load(artUrl);
+    art.colorSpace = THREE.SRGBColorSpace;
+    art.anisotropy = 8;
+    figure = new THREE.Sprite(new THREE.SpriteMaterial({ map: art, transparent: true, depthWrite: false, depthTest: false }));
+    figure.scale.set(BW, BH, 1);
+    figure.position.copy(CENTRE);
+    figure.renderOrder = 65;
+    figure.userData.dept = 'brain';
+    brainGroup.add(figure);
+  }
   const _r = new THREE.Vector3(), _u = new THREE.Vector3();
-  const W = n => { // unit → world, on the billboard plane (screen right / screen up from the camera)
+  const W = n => { // glints stay within the illustrated brain, not on the transparent garden edge
     const f = FP(n) || { x: n.x, y: n.y }; const cam = getCamera();
     _r.setFromMatrixColumn(cam.matrixWorld, 0).normalize(); _u.setFromMatrixColumn(cam.matrixWorld, 1).normalize();
-    return CENTRE.clone().addScaledVector(_r, f.x * 0.64 * BW / 2).addScaledVector(_u, -f.y * 0.64 * 0.6 * BW / 2);
+    return CENTRE.clone().addScaledVector(_r, f.x * BW * .2).addScaledVector(_u, -f.y * BH * .18);
   };
-  function etch() {
-    ctx.clearRect(0, 0, PX, PY);
-    ctx.lineWidth = PX / 260; ctx.strokeStyle = `rgba(${INK},.224)`;
-    for (const [a, b] of links) {
-      if (!onFloor(nodes[a]) || !onFloor(nodes[b])) continue;
-      const [x1, y1] = P(nodes[a]), [x2, y2] = P(nodes[b]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    }
-    for (const n of nodes) {
-      if (!onFloor(n)) continue;
-      const [x, y] = P(n); const r = (0.8 + Math.sqrt(n.d) * 0.28) * PX / 130;
-      ctx.fillStyle = n.fresh ? GREEN : `rgba(${INK},.44)`;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-    }
-    tex.needsUpdate = true;
-  }
-  etch();
   const pulses = [];
   let nextPulse = performance.now() + 2500;
 
@@ -108,7 +91,7 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
   // the mock's glint: a soft green disc that swells and fades on the note for 2 s
   function flatPulse(n) {
     const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTex, transparent: true, opacity: 0, depthTest: false }));
-    m.position.copy(W(n)); m.renderOrder = 61;
+    m.position.copy(W(n)); m.renderOrder = 71;
     scene.add(m);
     pulses.push({ m, born: performance.now() });
   }
@@ -116,7 +99,7 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
     flatPulse(n);
     const p = W(n);
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTex, transparent: true, depthTest: false }));
-    s.position.copy(p); s.scale.set(0.9, 0.9, 1); s.renderOrder = 60;
+    s.position.copy(p); s.scale.set(0.9, 0.9, 1); s.renderOrder = 70;
     scene.add(s);
     if (label && hud && toScreen) { // "CLIENT EMAILS READ MOC-DELIVERY" — the mock's little pill
       const el = document.createElement('div'); el.className = 'readlab'; el.textContent = label; hud.appendChild(el);
@@ -126,7 +109,7 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
     if (seat) {
       const geo = new THREE.BufferGeometry().setFromPoints([p.clone(), new THREE.Vector3(seat.x, 2.4, seat.z)]);
       line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0x1E9070, dashSize: 0.9, gapSize: 0.6, transparent: true, opacity: 0.85, depthTest: false }));
-      line.computeLineDistances(); line.renderOrder = 59;
+      line.computeLineDistances(); line.renderOrder = 69;
       scene.add(line);
     }
     fx.push({ sprite: s, line, born: performance.now() });
@@ -156,7 +139,7 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
     nodes.push(n); byId.set(id, n.i); adj.push(new Set([hub.i])); adj[hub.i].add(n.i); links.push([hub.i, n.i]); hub.d++;
     state.notes++; state.newToday++;
     state.written.set(id, { agent: a.name, task: title, ts: Date.now() });
-    etch(); glint(n);
+    glint(n);
     updateStrip();
   }
   // LIVE: replace the graph with the server's (the user's real vault), keeping today's state
@@ -168,8 +151,10 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
     adj = nodes.map(() => new Set()); for (const [a, b] of links) { adj[a].add(b); adj[b].add(a); }
     byId = new Map(nodes.map(n => [n.id, n.i])); hubs = nodes.slice(0, 8);
     floorPos = new Map((g.floor || []).map(([x, y], i) => [i, { x, y }]));
-    state.notes = g.notes; sel = null;
-    etch(); updateStrip();
+    state.notes = g.notes; state.newToday = nodes.filter(n => n.fresh).length; sel = null;
+    groups = [...new Set(nodes.map(n => n.g))].sort(); on.clear(); groups.forEach(g => on.add(g));
+    if (openNow) { chips(); showIntro(); updateMeta(); }
+    updateStrip();
   }
   // LIVE: an agent read a named note (the server tells us which) — glint it if it is on the floor
   function readNote(agentId, name) {
@@ -217,10 +202,10 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
   }
   function updateStrip() {
     if (!strip) return;
-    strip.querySelector('.tb-count').textContent = state.notes.toLocaleString('en-NZ');
+    strip.querySelector('.tb-count').textContent = state.notes.toLocaleString(ptBR ? 'pt-BR' : 'en-NZ');
     const lr = strip.querySelector('.tb-last');
-    lr.innerHTML = state.lastRead ? `Last read <b>${esc(state.lastRead.note)}</b> by ${esc(state.lastRead.agent)} · ${timeStr(state.lastRead.ts)}` : `${BRAIN.links.length} wiki links · nothing read yet`;
-    strip.querySelector('.tb-new').textContent = state.newToday ? `+${state.newToday} note${state.newToday > 1 ? 's' : ''} today` : '';
+    lr.innerHTML = state.lastRead ? `${ptBR ? 'Última leitura' : 'Last read'} <b>${esc(state.lastRead.note)}</b> ${ptBR ? 'por' : 'by'} ${esc(state.lastRead.agent)} · ${timeStr(state.lastRead.ts)}` : `${links.length} ${ptBR ? 'ligações entre notas · nenhuma leitura ainda' : 'wiki links · nothing read yet'}`;
+    strip.querySelector('.tb-new').textContent = state.newToday ? `+${state.newToday} ${ptBR ? 'nota(s) hoje' : `note${state.newToday > 1 ? 's' : ''} today`}` : '';
   }
   updateStrip();
 
@@ -230,26 +215,28 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
   const search = document.getElementById('bvSearch'); const chipsEl = document.getElementById('bvChips');
   const pane = document.getElementById('bvPane'); const meta = document.getElementById('bvMeta');
   let openNow = false, k = 1.2, tx = 0, ty = 0, hover = null, sel = null, drag = null, match = null, freshOnly = false;
-  const groups = [...new Set(nodes.map(n => n.g))].sort();
+  let groups = [...new Set(nodes.map(n => n.g))].sort();
   const on = new Set(groups);
   function chips() {
-    chipsEl.innerHTML = groups.map(g => `<button class="bv-chip${on.has(g) ? ' on' : ''}" data-g="${g}"><i style="background:${GROUP_COL[g] || '#B0ADA3'}"></i>${GROUP_NAME(g)}</button>`).join('') +
-      `<button class="bv-chip live${freshOnly ? ' on' : ''}" data-g="__fresh">New today · ${state.newToday}</button>`;
+    chipsEl.innerHTML = groups.map((g, i) => `<button type="button" class="bv-chip${on.has(g) ? ' on' : ''}" data-g="${i}" aria-pressed="${on.has(g)}"><i style="background:${GROUP_COL[g] || '#B0ADA3'}"></i>${esc(GROUP_NAME(g))}</button>`).join('') +
+      `<button type="button" class="bv-chip live${freshOnly ? ' on' : ''}" data-g="__fresh" aria-pressed="${freshOnly}">${ptBR ? 'Novas hoje' : 'New today'} · ${state.newToday}</button>`;
   }
   chipsEl.addEventListener('click', e => {
     const b = e.target.closest('.bv-chip'); if (!b) return;
-    if (b.dataset.g === '__fresh') freshOnly = !freshOnly; else on.has(b.dataset.g) ? on.delete(b.dataset.g) : on.add(b.dataset.g);
-    chips();
+    if (b.dataset.g === '__fresh') freshOnly = !freshOnly; else { const group = groups[+b.dataset.g]; if (!group) return; on.has(group) ? on.delete(group) : on.add(group); }
+    chips(); if (!sel) showIntro();
   });
-  search.addEventListener('input', () => { const q = search.value.trim().toLowerCase(); match = q ? new Set(nodes.filter(n => n.id.toLowerCase().includes(q)).map(n => n.i)) : null; });
+  search.addEventListener('input', () => { const q = search.value.trim().toLowerCase(); match = q ? new Set(nodes.filter(n => n.id.toLowerCase().includes(q)).map(n => n.i)) : null; if (!sel) showIntro(); });
   search.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { search.value = ''; match = null; search.blur(); } });
   const visible = n => on.has(n.g) && (!freshOnly || n.fresh);
-  function S() { return Math.min(bcv.clientWidth, bcv.clientHeight) * 0.44 * k; }
-  function sx(n) { return bcv.clientWidth * 0.42 + n.x * S() + tx; }
-  function sy(n) { return bcv.clientHeight * 0.5 + n.y * S() + ty; }
+  function graphCx() { return bcv.clientWidth * (bcv.clientWidth < 850 ? .5 : .36); }
+  function graphCy() { return bcv.clientHeight * (bcv.clientWidth < 850 ? .39 : .56); }
+  function S() { return Math.min(bcv.clientWidth * (bcv.clientWidth < 850 ? .65 : .52), bcv.clientHeight * (bcv.clientWidth < 850 ? .32 : .7)) * k; }
+  function sx(n) { return graphCx() + n.x * S() + tx; }
+  function sy(n) { return graphCy() + n.y * S() + ty; }
   bcv.addEventListener('mousemove', e => {
     if (drag) { tx += e.clientX - drag.x; ty += e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY }; drag.moved = true; return; }
-    let best = null, bd = 12;
+    let best = null, bd = 18;
     for (const n of nodes) { if (!visible(n)) continue; const d = Math.hypot(sx(n) - e.clientX, sy(n) - e.clientY); if (d < bd) { bd = d; best = n; } }
     hover = best; bcv.style.cursor = best ? 'pointer' : 'grab';
   });
@@ -258,63 +245,113 @@ export function initBrain({ scene, brainGroup, getR, esc, hud, toScreen, getCame
   bcv.addEventListener('wheel', e => {
     e.preventDefault(); e.stopPropagation();
     const f = Math.exp(-e.deltaY * 0.0025); const nk = Math.max(0.5, Math.min(7, k * f)); const r = nk / k;
-    const cx = bcv.clientWidth * 0.42, cy = bcv.clientHeight * 0.5;
+    const cx = graphCx(), cy = graphCy();
     tx = (tx + cx - e.clientX) * r + e.clientX - cx; ty = (ty + cy - e.clientY) * r + e.clientY - cy; k = nk;
   }, { passive: false });
-  function select(n) {
+  const noteTitle = id => id.replace(/^(\d{4}-\d\d-\d\d) /, '$1 · ').replace(/[-_]/g, ' ');
+  function updateMeta() { meta.textContent = `${owner} · ${state.notes.toLocaleString(ptBR ? 'pt-BR' : 'en-NZ')} ${ptBR ? 'NOTAS' : 'NOTES'} · ${links.length} ${ptBR ? 'LIGAÇÕES' : 'LINKS'}`; }
+  function showIntro() {
+    const results = nodes.filter(n => visible(n) && (!match || match.has(n.i))).sort((a, b) => b.d - a.d);
+    pane.innerHTML = `<div class="bv-kicker">${ptBR ? 'BASE DE CONHECIMENTO' : 'KNOWLEDGE BASE'}</div><h3>${ptBR ? 'As notas do escritório' : 'Office notes'}</h3>` +
+      `<p class="bv-lead">${ptBR ? 'Cada ponto é uma nota em Markdown. As linhas mostram referências entre elas. Os agentes consultam essas informações para trabalhar e registram resultados como novas notas.' : 'Each point is a Markdown note. Lines show references between them. Agents read this knowledge and save results as new notes.'}</p>` +
+      `<div class="bv-explain"><span><i class="bv-dot"></i>${ptBR ? 'Ponto: nota' : 'Dot: note'}</span><span><i class="bv-line"></i>${ptBR ? 'Linha: ligação' : 'Line: link'}</span></div>` +
+      `<div class="bv-lab">${match ? `${results.length} ${ptBR ? 'RESULTADOS' : 'RESULTS'}` : ptBR ? 'NOTAS MAIS CONECTADAS' : 'MOST CONNECTED NOTES'}</div>` +
+      (results.length ? results.slice(0, 8).map(n => `<button type="button" class="bv-result" data-i="${n.i}"><i style="background:${GROUP_COL[n.g] || '#B0ADA3'}"></i><span>${esc(noteTitle(n.id))}<small>${esc(GROUP_NAME(n.g))} · ${n.d} ${ptBR ? 'ligações' : 'links'}</small></span><b>↗</b></button>`).join('') : `<p>${ptBR ? 'Nenhuma nota encontrada neste filtro.' : 'No notes in this filter.'}</p>`) +
+      `<p class="bv-note">${ptBR ? 'O mapa mostra as notas que têm ligações. Notas isoladas entram na contagem, mas não aparecem como pontos.' : 'The map shows linked notes. Unlinked notes count toward the total but do not appear as dots.'}</p>`;
+  }
+  function showMarkdown(el, source) {
+    const lines = source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim().split(/\r?\n/);
+    el.replaceChildren();
+    let paragraph = [];
+    const flush = () => { if (!paragraph.length) return; const p = document.createElement('p'); p.textContent = paragraph.join(' ').replace(/\*\*/g, '').replace(/`/g, ''); el.append(p); paragraph = []; };
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) { flush(); continue; }
+      const heading = trimmed.match(/^#{1,6}\s+(.+)$/);
+      if (heading) { flush(); const h = document.createElement('h4'); h.textContent = heading[1]; el.append(h); continue; }
+      const list = trimmed.match(/^(?:[-*]|\d+\.)\s+(.+)$/);
+      if (list) { flush(); const p = document.createElement('p'); p.className = 'bv-list'; p.textContent = '• ' + list[1].replace(/\*\*/g, ''); el.append(p); continue; }
+      paragraph.push(trimmed);
+    }
+    flush();
+    if (!el.childNodes.length) el.textContent = ptBR ? 'Esta nota está vazia.' : 'This note is empty.';
+  }
+  async function select(n) {
     sel = n;
     const out = [...adj[n.i]].map(i => nodes[i]).sort((a, b) => b.d - a.d);
     const rd = state.reads.get(n.id), wr = state.written.get(n.id);
-    pane.innerHTML = `<h3>${esc(n.id)}</h3><div class="bv-path"><i style="background:${GROUP_COL[n.g] || '#B0ADA3'}"></i>${esc(GROUP_NAME(n.g))} · ${n.d} link${n.d === 1 ? '' : 's'}${n.fresh ? ' · <span class="bv-g">new today</span>' : ''}</div>` +
-      (wr ? `<div class="bv-lab">Written by</div><p>${esc(wr.agent)} · ${timeStr(wr.ts)} · from the task “${esc(wr.task)}”</p>` : '') +
-      (rd ? `<div class="bv-lab">Last read by</div><p>${esc(rd.agent)} · ${timeStr(rd.ts)}</p>` : '') +
-      `<div class="bv-lab">Links · ${out.length}</div>` + out.slice(0, 18).map(o => `<div class="bv-lk" data-i="${o.i}">${esc(o.id)}</div>`).join('') +
-      (out.length > 18 ? `<div class="bv-more">+${out.length - 18} more</div>` : '');
-    pane.querySelectorAll('.bv-lk').forEach(el => el.addEventListener('click', () => { const t = nodes[+el.dataset.i]; select(t); centre(t); }));
+    pane.innerHTML = `<button type="button" class="bv-back" data-action="intro">← ${ptBR ? 'Todas as notas' : 'All notes'}</button>` +
+      `<div class="bv-kicker">${ptBR ? 'NOTA' : 'NOTE'} · ${esc(GROUP_NAME(n.g))}</div><h3>${esc(noteTitle(n.id))}</h3>` +
+      `<div class="bv-path"><i style="background:${GROUP_COL[n.g] || '#B0ADA3'}"></i>${n.d} ${ptBR ? 'ligações' : 'links'}${n.fresh ? ` · <span class="bv-g">${ptBR ? 'nova hoje' : 'new today'}</span>` : ''}</div>` +
+      (wr ? `<p class="bv-note">${ptBR ? 'Escrita por' : 'Written by'} ${esc(wr.agent)} · ${timeStr(wr.ts)}</p>` : '') +
+      (rd ? `<p class="bv-note">${ptBR ? 'Lida por' : 'Read by'} ${esc(rd.agent)} · ${timeStr(rd.ts)}</p>` : '') +
+      `<div class="bv-lab">${ptBR ? 'CONTEÚDO' : 'CONTENT'}</div><div class="bv-content" id="bvContent">${ptBR ? 'Carregando nota…' : 'Loading note…'}</div>` +
+      `<div class="bv-lab">${ptBR ? 'NOTAS RELACIONADAS' : 'RELATED NOTES'} · ${out.length}</div>` +
+      (out.length ? out.map(o => `<button type="button" class="bv-lk" data-i="${o.i}">${esc(noteTitle(o.id))}</button>`).join('') : `<p>${ptBR ? 'Sem ligações.' : 'No links.'}</p>`);
+    pane.scrollTop = 0;
+    try {
+      const res = await fetch(`/api/brain/note?id=${encodeURIComponent(n.id)}`);
+      if (!res.ok) throw new Error('not found');
+      const data = await res.json();
+      if (sel !== n) return;
+      const content = pane.querySelector('#bvContent');
+      if (content) showMarkdown(content, data.content);
+    } catch {
+      if (sel !== n) return;
+      const content = pane.querySelector('#bvContent');
+      if (content) content.textContent = ptBR ? 'Conteúdo indisponível nesta visualização. Abra o escritório conectado ao servidor para ler a nota.' : 'Content unavailable here. Open the office through the server to read this note.';
+    }
   }
+  pane.addEventListener('click', e => {
+    const back = e.target.closest('[data-action="intro"]');
+    if (back) { sel = null; showIntro(); return; }
+    const button = e.target.closest('[data-i]');
+    if (!button) return;
+    const n = nodes[+button.dataset.i]; if (n) { select(n); centre(n); }
+  });
   function centre(n) { tx = -n.x * S(); ty = -n.y * S(); }
   function draw() {
     if (!openNow) return;
     const dpr = devicePixelRatio || 1, Wd = bcv.clientWidth, Hd = bcv.clientHeight;
-    if (bcv.width !== Math.round(Wd * dpr)) { bcv.width = Math.round(Wd * dpr); bcv.height = Math.round(Hd * dpr); }
+    if (bcv.width !== Math.round(Wd * dpr) || bcv.height !== Math.round(Hd * dpr)) { bcv.width = Math.round(Wd * dpr); bcv.height = Math.round(Hd * dpr); }
     bctx.setTransform(dpr, 0, 0, dpr, 0, 0); bctx.clearRect(0, 0, Wd, Hd);
     const focus = hover || sel; const hi = focus ? new Set([focus.i, ...adj[focus.i]]) : null;
-    bctx.lineWidth = Math.max(.5, .8 * Math.sqrt(k));
+    bctx.lineWidth = Math.max(.8, 1.2 * Math.sqrt(k));
     for (const [a, b] of links) {
       const A = nodes[a], B = nodes[b]; if (!visible(A) || !visible(B)) continue;
       const lit = hi && hi.has(a) && hi.has(b);
-      bctx.strokeStyle = lit ? 'rgba(232,230,223,.85)' : `rgba(232,230,223,${hi || match ? .05 : .15})`;
+      bctx.strokeStyle = lit ? 'rgba(138,216,187,.82)' : `rgba(232,230,223,${hi || match ? .055 : .20})`;
       bctx.beginPath(); bctx.moveTo(sx(A), sy(A)); bctx.lineTo(sx(B), sy(B)); bctx.stroke();
     }
-    bctx.font = `${Math.max(9, 10 * Math.sqrt(k))}px Inter, -apple-system, sans-serif`; bctx.textBaseline = 'middle';
+    bctx.font = `600 ${Math.max(11, 11 * Math.sqrt(k))}px Inter, -apple-system, sans-serif`; bctx.textBaseline = 'middle';
     for (const n of nodes) {
       if (!visible(n)) continue;
-      const x = sx(n), y = sy(n); const r = (1.6 + Math.sqrt(n.d) * .75) * Math.sqrt(k);
+      const x = sx(n), y = sy(n); const r = (3 + Math.sqrt(n.d) * 1.1) * Math.sqrt(k);
       const dim = (hi && !hi.has(n.i)) || (match && !match.has(n.i));
       bctx.globalAlpha = dim ? .2 : 1;
+      if (!dim && (n.d >= 6 || sel === n || hover === n)) { bctx.fillStyle = 'rgba(255,255,255,.055)'; bctx.beginPath(); bctx.arc(x, y, r + 8, 0, 7); bctx.fill(); }
       bctx.fillStyle = GROUP_COL[n.g] || '#B0ADA3'; bctx.beginPath(); bctx.arc(x, y, r, 0, 7); bctx.fill();
       if (n.fresh) { bctx.strokeStyle = GREEN; bctx.lineWidth = 1.5; bctx.beginPath(); bctx.arc(x, y, r + 3, 0, 7); bctx.stroke(); }
       if (sel === n) { bctx.strokeStyle = '#E8E6DF'; bctx.lineWidth = 1.5; bctx.beginPath(); bctx.arc(x, y, r + 4, 0, 7); bctx.stroke(); }
-      const label = n.d >= 18 || k > 2.2 || (hi && hi.has(n.i)) || (match && match.has(n.i)) || n.fresh;
-      if (label) { bctx.fillStyle = dim ? 'rgba(232,230,223,.35)' : '#E8E6DF'; bctx.fillText(n.id, x + r + 4, y); }
+      const label = n.d >= 8 || k > 1.9 || (hi && hi.has(n.i)) || (match && match.has(n.i)) || n.fresh;
+      if (label && !dim) { bctx.fillStyle = '#E8E6DF'; bctx.fillText(noteTitle(n.id), x + r + 8, y); }
       bctx.globalAlpha = 1;
     }
     requestAnimationFrame(draw);
   }
   let owner = PROFILE && PROFILE.company ? String(PROFILE.company).toUpperCase() : 'YOUR NOTES'; // V3.1: the business name when served (was hard-coded to one company); INDUSTRY PROFILE: the demo company
-  function setOwner(name) { owner = String(name || 'YOUR NOTES').toUpperCase(); if (openNow) meta.textContent = `${owner} · ${state.notes.toLocaleString('en-NZ')} NOTES · ${links.length} LINKS`; }
+  function setOwner(name) { owner = String(name || (ptBR ? 'SUAS NOTAS' : 'YOUR NOTES')).toUpperCase(); if (openNow) updateMeta(); }
   function open() {
     if (openNow) return;
     openNow = true; ov.classList.add('on'); document.body.classList.add('brainOpen');
-    meta.textContent = `${owner} · ${state.notes.toLocaleString('en-NZ')} NOTES · ${links.length} LINKS`;
-    chips(); if (!sel) pane.innerHTML = '<div class="bv-empty">Click a note to read it. Hover to see its neighbours.</div>';
+    updateMeta(); chips(); if (!sel) showIntro();
     requestAnimationFrame(draw);
   }
   function close() { if (!openNow) return; openNow = false; ov.classList.remove('on'); document.body.classList.remove('brainOpen'); }
   function toggle() { openNow ? close() : open(); }
   document.getElementById('bvClose').addEventListener('click', close);
-  addEventListener('resize', () => { if (openNow) draw(); });
+  document.getElementById('bvReset').addEventListener('click', () => { k = 1.2; tx = 0; ty = 0; sel = null; showIntro(); });
 
-  function setTheme(dark) { INK = dark ? '236,234,227' : '21,20,20'; etch(); }
-  return { read, readNote, write, setGraph, setTheme, setOwner, setQuiet, tick, open, close, toggle, isOpen: () => openNow, state, get nodes() { return nodes; }, get links() { return links; } };
+  function setTheme(dark) { INK = dark ? '236,234,227' : '21,20,20'; }
+  return { read, readNote, write, setGraph, setTheme, setOwner, setQuiet, tick, open, close, toggle, artSprite: figure, isOpen: () => openNow, state, get nodes() { return nodes; }, get links() { return links; } };
 }

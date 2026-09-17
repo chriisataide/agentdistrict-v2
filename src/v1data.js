@@ -1,5 +1,6 @@
 // v1 data extracted VERBATIM from command-centre.html (lines 646-666, 671-1095, 2176, 2975-3021).
 import { applyV1 } from './profile.js';
+import { ptBR } from './pt-br.js';
 // Do not hand-edit agent content here — it is the single source of truth shared with v1.
 export const clockStr = () => new Date().toLocaleTimeString("en-NZ",{hour:"2-digit",minute:"2-digit",hour12:false});
 export const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g,"-");
@@ -14,7 +15,7 @@ export const P = {
 export const rnd = a => a[Math.floor(Math.random()*a.length)];
 export const ri = (a,b) => a + Math.floor(Math.random()*(b-a+1));
 export const person = () => rnd(P.first)+' '+rnd(P.last);
-export const money = n => '$'+n.toLocaleString('en-NZ');
+export const money = n => '$'+n.toLocaleString(ptBR ? 'pt-BR' : 'en-NZ');
 /* ---------- KPIs ---------- */
 export const KPIS = [
   { id:'leads',     label:'Leads Enriched',  val:47,   fmt:v=>v },
@@ -801,7 +802,7 @@ export const FILE_GEN = {
     content:`DESIGN DELIVERY\n\nbrief: ${rnd(['6-slide IG carousel — the 10am Rule','3 Meta ad variants — same copy, 3 layouts','quote-card set — 4 customer wins'])}\nbriefed by: ${rnd(['INSTAGRAM ORGANIC','META ADS','PROPOSALS'])}\nturnaround: ${ri(2,5)} hours\n\nspecs\n  palette ........ ink #151414 / cream #FDFFF8 + chips\n  type ........... serif display + sans body (brand kit)\n  formats ........ 1080×1350 + 1080×1920 exports\n\nstatus: delivered ✓ · source files in the Brain → Brand Kit` }),
   piper: ()=>{ const co=rnd(P.co), n=ri(6,28), pl=rnd(P.plan), m=ri(500,2400);
     return { icon:'📄', name:`proposal-${slug(co)}.pdf`, meta:'proposal draft · awaiting AJ approval · click to view',
-    content:`AGENTS OFFICE — PROPOSAL\nClient: ${co}\nSeats: ${n} · Plan: ${pl} · ${money(m)}/mo (12-mo term, 10% annual disc.)\n\n1. YOUR USE CASE\n   ${co} needs call tracking and coaching across ${n} reps.\n   Current stack loses ~30% of call outcomes to manual logging.\n\n2. PRICING\n   ${n} seats × ${pl} = ${money(m)}/mo · locked for 12 months\n\n3. PROOF\n   Auckland roofing co: 0 → 40 tracked calls/week in 14 days.\n\n4. NEXT STEPS\n   Reply to the cover email or sign online — link included.\n\n— drafted by PROPOSALS in 4 min · pulled pricing + case study from the Brain` };},
+    content:`AGENT DISTRICT — PROPOSAL\nClient: ${co}\nSeats: ${n} · Plan: ${pl} · ${money(m)}/mo (12-mo term, 10% annual disc.)\n\n1. YOUR USE CASE\n   ${co} needs call tracking and coaching across ${n} reps.\n   Current stack loses ~30% of call outcomes to manual logging.\n\n2. PRICING\n   ${n} seats × ${pl} = ${money(m)}/mo · locked for 12 months\n\n3. PROOF\n   Auckland roofing co: 0 → 40 tracked calls/week in 14 days.\n\n4. NEXT STEPS\n   Reply to the cover email or sign online — link included.\n\n— drafted by PROPOSALS in 4 min · pulled pricing + case study from the Brain` };},
   newt: ()=>({ icon:'✍', name:'newsletter-august-draft.md', meta:'draft v3 · awaiting AJ approval · click to view',
     content:`SUBJECT A: calls before 10am are a trap\nSUBJECT B: we looked at 40,000 calls — call at this time\n\n# The 10am Rule\nConnect rates nearly double between 10:00–11:30am.\nWe pulled the (anonymised) numbers across 40,000 dials:\n\n  before 10am ......... 11% connect\n  10:00–11:30 ......... 21% connect\n  after 4pm ........... 9% connect\n\nCustomer story: Harbour City Roofing went 0 → 40 tracked\ncalls/week. One tool tip: pin your top list to the dialler.\n\nCTA (soft): reply "10AM" and we'll send the full breakdown.` }),
   ada: ()=>{ const sp=ri(600,780);

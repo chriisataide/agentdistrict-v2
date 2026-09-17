@@ -10,6 +10,15 @@ const norm = s => String(s).toLowerCase().replace(/^claude\.ai\s+/, '').replace(
 function hue(name) { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; }
 export const inkOf = name => `hsl(${hue(name)} 52% 42%)`;
 
+export function connectorDisplayName(value) {
+  const raw = String(value || '');
+  const plugin = /^plugin:[^:]+:([^:]+)$/i.exec(raw);
+  if (!plugin) return raw;
+  const key = plugin[1].toLowerCase();
+  const brands = { github: 'GitHub', sentry: 'Sentry', vercel: 'Vercel', playwright: 'Playwright', figma: 'Figma', supabase: 'Supabase', 'huggingface-skills': 'Hugging Face Skills', postman: 'Postman' };
+  return brands[key] || plugin[1].replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // a tile for a server we have no logo for: same white rounded square as the baked ones, the
 // name's initials in a colour hashed from the name — stable across boots
 export function tile(name) {
@@ -32,8 +41,9 @@ export function fromSummary(m, agents) {
   const logos = {}, status = {}, shared = {}, names = {}, off = [];
   for (const s of m.servers || []) {
     const key = s.key || s.id;
-    logos[key] = MCP_LOGOS[key] || { name: s.name, img: tile(s.name) };
-    names[key] = s.name;
+    const name = connectorDisplayName(s.name);
+    logos[key] = MCP_LOGOS[key] || { name, img: tile(name) };
+    names[key] = name;
     status[key] = s.denied ? 'denied' : (s.allowed ? s.status : 'denied');
     // only a usable server is wired to pods; the rest sit in the strip, grey, unwired — nothing flows
     if (status[key] !== 'connected') { off.push(key); continue; }

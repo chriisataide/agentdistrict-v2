@@ -16,7 +16,7 @@ function readJSON(p) {
 export function loadConfig() {
   const base = readJSON(path.join(ROOT, 'office.config.json'));
   const local = readJSON(path.join(ROOT, 'office.config.local.json'));
-  const c = { name: 'Agents Office', brain: './brain', port: 4520, model: 'sonnet', ...base, ...local }; // V3.6: model = sonnet · opus · fable
+  const c = { name: 'Agents Office', brain: './brain', port: 4520, model: 'sonnet', ...base, ...local }; // model = sonnet · opus · fable · codex
   c.mcp = { allow: [], deny: [], departments: {}, ...(base.mcp || {}), ...(local.mcp || {}) };
   c.tools = { web: true, browser: true, ...(base.tools || {}), ...(local.tools || {}) }; // V3.2 (16 Sep): browser = Claude in Chrome
   c.teams = { enabled: true, max: 4, ...(base.teams || {}), ...(local.teams || {}) }; // V3.2 (16 Sep): Agent Teams
@@ -24,6 +24,8 @@ export function loadConfig() {
   if (process.env.AO_BRAIN) c.brain = process.env.AO_BRAIN;
   if (process.env.PORT) c.port = +process.env.PORT;
   if (process.env.AO_MODEL) c.model = process.env.AO_MODEL;
+  if (process.env.AO_HOST !== undefined) c.host = process.env.AO_HOST;             // V3.2.1: which interface to bind (default: this machine only)
+  if (process.env.AO_PASSWORD !== undefined) c.password = process.env.AO_PASSWORD; // V3.2.1: required before the office may listen beyond localhost
   c.port = +c.port || 4520;
   c.brainPath = path.resolve(ROOT, c.brain);
   return c;

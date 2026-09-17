@@ -38,7 +38,9 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { codexStatus, runCodex } from './codex.mjs';
 import { loadConfig, ROOT } from './config.mjs';
 import { layoutGraph, readVault, readOfficeNotes } from './graph-build.mjs';
 import { DEPTS, DEPT_KEYS } from './src/data.js';
@@ -50,10 +52,28 @@ import * as onboard from './onboard.mjs';
 import * as routines from './routines.mjs';
 import * as usage from './usage.mjs';
 import * as teams from './teams.mjs';
-import { normModel, modelFor, modelArgs, modelId, modelName, MODEL_KEYS, DEFAULT_MODEL, normEffort, effortFor, effortName, EFFORT_KEYS } from './src/models.js';
-import { parseWhen, describe, valid as validWhen, untilText } from './src/when.js';
+import { normModel, modelFor, modelArgs, modelId, modelName, modelProvider, MODEL_KEYS, DEFAULT_MODEL, normEffort, effortFor, effortName, EFFORT_KEYS } from './src/models.js';
+import { parseWhen, describe as describeSchedule, valid as validWhen, untilText as countdown } from './src/when.js';
+const describe = when => describeSchedule(when, 'pt-BR');
+const untilText = (ts, now) => countdown(ts, now, 'pt-BR');
 
 const cfg = loadConfig();
+// V3.2.1: WHO MAY OPEN THE OFFICE. It has no accounts, and every task it runs uses YOUR Claude login
+// and YOUR connectors — so it binds to this machine only. To let the team in, set a host and a
+// password (office.config.local.json, or AO_HOST / AO_PASSWORD); binding beyond localhost without a
+// password is refused rather than left open.
+const HOST = cfg.host || '127.0.0.1';
+const PASSWORD = cfg.password || '';
+const LOCAL_ONLY = ['127.0.0.1', 'localhost', '::1'].includes(HOST);
+// ponytail: HTTP Basic over plain http — the password is base64 on the wire. Fine on the office LAN;
+// put it behind HTTPS or a tunnel before it is reachable from outside the building.
+const authed = req => {
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Basic ')) return false;
+  const given = Buffer.from(h.slice(6), 'base64').toString('utf8').split(':').slice(1).join(':');
+  const a = Buffer.from(given), b = Buffer.from(PASSWORD);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
 const HTML = path.join(ROOT, 'dist', 'command-centre-v2.html'); // built by build.mjs; shipped so npm start works without a build
 const DATA = path.join(ROOT, 'data');
 const FILE = path.join(DATA, 'tasks.json');
@@ -62,7 +82,7 @@ const NOTES_DIR = path.join(BRAIN, 'Agents Office');
 const CLI_CWD = path.join(os.tmpdir(), 'agents-office-cli'); // an empty cwd: no CLAUDE.md, no repo context
 const version = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch { return '?'; } })();
 const RUN_TIMEOUT = Math.max(60, +cfg.timeout || 300) * 1000; // agents with tools take longer than a plain draft
-{ const m = normModel(cfg.model); if (cfg.model && !m) console.warn(`config: model must be sonnet, opus or fable (got "${cfg.model}") — using ${DEFAULT_MODEL}`); cfg.model = m || DEFAULT_MODEL; } // V3.6: three models, by name
+{ const m = normModel(cfg.model); if (cfg.model && !m) console.warn(`config: model must be sonnet, opus, fable or codex (got "${cfg.model}") — using ${DEFAULT_MODEL}`); cfg.model = m || DEFAULT_MODEL; }
 { const e = normEffort(cfg.effort); if (cfg.effort && !e) console.warn(`config: effort must be low, medium, high, xhigh or max (got "${cfg.effort}") — using the model's own`); cfg.effort = e || ''; } // V3.6.1: the office's effort, empty = the model's own
 mcp.configure(cfg);
 const TEAMS = teams.settings(cfg); // V3.2 (16 Sep): { enabled, max }
@@ -119,6 +139,7 @@ function ranOn(mu, want) {
   return keys.find(k => k.includes(fam)) || keys.filter(k => !/haiku/.test(k)).sort((a, b) => (mu[b].outputTokens || 0) - (mu[a].outputTokens || 0))[0] || keys[0];
 }
 async function askX(system, user, { maxTokens = 4000, tools = true, timeout = RUN_TIMEOUT, model = cfg.model, effort = null } = {}) { // model: sonnet · opus · fable · effort: low…max or null = the model's own (src/models.js)
+  if (modelProvider(model) === 'openai') return runCodex({ system, user, effort, timeout });
   if (sdk) {
     const res = await sdk.messages.create({ model: modelId(model), max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
     if (res.stop_reason === 'refusal') throw new Error('Claude declined this request');
@@ -202,6 +223,7 @@ function contextText(index, names) {
 
 /* ---------- the roster, as Claude sees it ---------- */
 const persona = a => `${a.name}${a.lead ? ' (lead)' : ''} · ${a.role} · ${a.does}`;
+const LANGUAGE = '\nRespond in Brazilian Portuguese (pt-BR). Write all user-facing titles, plans, explanations, chat replies and deliverables in natural Brazilian Portuguese. Keep API keys, agent IDs, tool names and any exact required output format unchanged.\n';
 function rosterText(dept) { return AGENTS.filter(a => a.department === dept).map(a => { const sk = skills.names(a); return `- ${a.id} · ${persona(a)}${sk.length ? ' · skills: ' + sk.join(', ') : ''}`; }).join('\n'); }
 // what an agent is told about itself: the job, the owner's standing instructions, the skills it follows
 function agentBrief(a) {
@@ -212,7 +234,7 @@ const toolKeys = names => [...new Set(names.map(n => /^mcp__/.test(n) ? mcp.keyO
 async function route(dept, text) {
   const d = DEPTS[dept]; refreshSkills();
   const system = `You are the router for ${cfg.name}, a business whose departments are run by AI agents. ` +
-    'Pick the single best agent for the owner\'s request — an agent whose skills match the request is the right one — and return ONLY a JSON object — no prose, no code fences.';
+    'Pick the single best agent for the owner\'s request — an agent whose skills match the request is the right one — and return ONLY a JSON object — no prose, no code fences.' + LANGUAGE;
   const user = `Department: ${d.name}\nAgents (id · name · role · what they do):\n${rosterText(dept)}\n\nOwner's request: "${text}"\n\n` +
     'Return: {"agent":"<id from the list>","title":"<clean imperative task title, max 70 characters>","plan":["<step>","<step>","<step>"],"eta_minutes":<integer>,"why":"<one short sentence>","needs_ok":<true if doing this involves sending, posting, paying, deleting or changing anything outside this machine; false if it only reads and reports>}';
   const j = parseJSON(await ask(system, user, { maxTokens: 800, timeout: 150000, model: 'sonnet' })); // routing is a one-line JSON job: always Sonnet
@@ -224,7 +246,7 @@ async function route(dept, text) {
 // the system prompt every agent run starts from: who it is, its brief, skills and lessons, its tools, the company, the notes for this task
 function agentSystem(a, index, read, { extra = '', words = 260 } = {}) {
   const d = DEPTS[a.department];
-  return `You are ${a.name}, ${a.role || 'an agent'}, in the ${d.name} department of ${cfg.name}. ${a.does}\n${agentBrief(a)}` + (extra ? `\n${extra}\n` : '') +
+  return `You are ${a.name}, ${a.role || 'an agent'}, in the ${d.name} department of ${cfg.name}. ${a.does}\n${agentBrief(a)}${LANGUAGE}` + (extra ? `\n${extra}\n` : '') +
     'Write the finished deliverable itself, not a description of what you would do. Plain text: a short heading, then short sections or bullets. ' +
     `At most ${words} words unless a skill or the owner\'s instructions set a different shape — those win. No preamble, no sign-off. Ground it in the company notes below; where a fact is missing, make a reasonable assumption and mark it (assumed). ` +
     'If you used a tool, say so in one line at the end ("Used: Gmail — searched the client thread").\n\n' +
@@ -256,8 +278,9 @@ async function run(task, feedback, mode) { // mode: undefined (a task from the b
   const user = `Task: ${task.title}\nOwner's request: ${task.text}` + (task.plan?.length ? `\nAgreed plan: ${task.plan.join(' → ')}` : '') + routineLine + modeLine +
     (feedback && mode !== 'approve' ? `\n\nThe owner reviewed your previous version and asked for changes: "${feedback}"\nPrevious version:\n${task.result}` : '');
   const { pick, eff } = pickFor(task, a);
+  if (mode === 'approve' && modelProvider(pick.model) === 'openai') { pick.model = 'sonnet'; pick.from = 'approval'; }
   const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort });
-  if (!text) throw new Error('Claude returned nothing');
+  if (!text) throw new Error('O modelo não retornou uma resposta');
   return { result: text, read, tools: toolKeys(tools), used: mcp.namesOf(tools), skills: skills.names(a), modelUsed: pick.model, modelFrom: pick.from, modelId: ran, effortUsed: eff.effort || '', effortFrom: eff.from };
 }
 
@@ -308,8 +331,9 @@ async function runTeamLead(task, feedback, mode) {
   const system = agentSystem(lead, index, read, { extra: `TEAM\nYou lead this team. The pieces below were done by your teammates (one of them may be yours). You write the finished deliverable from them.`, words: 450 });
   const user = teams.synthPrompt({ task, pieces: tm.pieces || [], messages: tm.messages || [], nameOf, feedback: mode === 'approve' ? null : feedback }) + routineLineFor(task) + modeLineFor(mode, task);
   const { pick, eff } = pickFor(task, lead);
+  if (mode === 'approve' && modelProvider(pick.model) === 'openai') { pick.model = 'sonnet'; pick.from = 'approval'; }
   const { text, tools, modelId: ran } = await askX(system, user, { model: pick.model, effort: eff.effort, maxTokens: 6000 });
-  if (!text) throw new Error('Claude returned nothing');
+  if (!text) throw new Error('O modelo não retornou uma resposta');
   const allTools = [...new Set([...(tm.pieces || []).flatMap(p => p.tools || []), ...toolKeys(tools)])];
   const allUsed = [...new Set([...(tm.pieces || []).flatMap(p => p.used || []), ...mcp.namesOf(tools)])];
   const allRead = [...new Set([...read, ...(tm.pieces || []).flatMap(p => p.read || [])])];
@@ -330,7 +354,7 @@ async function chat(agentId, text, history) {
   const index = vaultIndex();
   const read = relevantNotes(index, a.department, text, 3);
   const mine = load().filter(t => t.agent === agentId).slice(-6).map(t => `- [${t.state}] ${t.title}`).join('\n');
-  const system = `You are ${a.name}, ${a.role || 'an agent'}, in the ${d.name} department of ${cfg.name}. ${a.does}\n${agentBrief(a)}` +
+  const system = `You are ${a.name}, ${a.role || 'an agent'}, in the ${d.name} department of ${cfg.name}. ${a.does}\n${agentBrief(a)}${LANGUAGE}` +
     'You are talking to the owner. Answer as this agent, in first person, briefly (under 120 words unless asked for detail), plainly, no hype. ' +
     'Use the company notes; say when something is not in them. If the owner asks you to look something up, use your tools. Nothing outbound is sent without the owner\'s explicit say-so.\n\n' +
     `${mcp.promptText(a.tools)}\n\nCOMPANY NOTES\n${businessContext(index)}\n\nRELEVANT NOTES\n${contextText(index, read)}\n\nYOUR RECENT TASKS\n${mine || '—'}`;
@@ -423,27 +447,27 @@ async function makeRoutine({ dept, text, when, agent, needsOk, model, effort }) 
 // B2: a routine said to an agent in chat. The lead routes it inside the department; a specialist takes it on.
 async function routinesChat(a, text) {
   const t = String(text).trim(), dept = a.department, allowed = routines.ALLOWED.includes(dept);
-  if (/^\s*(routines?|schedule|timetable|what(?:'s| is) (?:scheduled|on the (?:schedule|timetable)))\s*\??\s*$/i.test(t)) return { reply: allowed ? routines.listText(loadRoutines(), dept, AGENTS) : routines.refusal(dept) };
-  const cmd = /^\s*(pause|stop|resume|start|unpause|delete|remove|run)\b\s*(?:the\s+)?(.*?)\s*[.!]?$/i.exec(t);
+  if (/^\s*(routines?|rotinas?|agenda|agendamentos?|schedule|timetable|what(?:'s| is) (?:scheduled|on the (?:schedule|timetable)))\s*\??\s*$/i.test(t)) return { reply: allowed ? routines.listText(loadRoutines(), dept, AGENTS) : routines.refusal(dept) };
+  const cmd = /^\s*(pause|stop|resume|start|unpause|delete|remove|run|pausar|parar|retomar|iniciar|excluir|remover|executar|rodar)\b\s*(?:the\s+|a\s+)?(.*?)\s*[.!]?$/i.exec(t);
   if (cmd && allowed && !parseWhen(t)) {
-    const list = loadRoutines(); const words = cmd[2].replace(/\s+(routine|one)$/i, ''); const r = routines.matchRoutine(list, dept, words);
-    if (!r) return { reply: (list.some(x => x.dept === dept) ? 'Which one? ' : '') + routines.listText(list, dept, AGENTS) };
+    const list = loadRoutines(); const words = cmd[2].replace(/\s+(routine|one|rotina)$/i, ''); const r = routines.matchRoutine(list, dept, words);
+    if (!r) return { reply: (list.some(x => x.dept === dept) ? 'Qual delas? ' : '') + routines.listText(list, dept, AGENTS) };
     const verb = cmd[1].toLowerCase();
-    if (verb === 'run') { const task = fire(r, { by: 'you' }); return { reply: `Running "${r.title}" now — ${r.agent === a.id ? 'I have it' : agentName(r.agent) + ' has it'}. It lands in the panel${r.needsOk ? ' and waits for your OK before anything is sent' : ''}.`, task }; }
-    if (/pause|stop/.test(verb)) { editRoutine(r.id, { paused: true }); return { reply: `Paused "${r.title}". It stays on the timetable; say "resume ${r.title.toLowerCase()}" to start it again.` }; }
-    if (/resume|start|unpause/.test(verb)) { const n = editRoutine(r.id, { paused: false }); return { reply: `"${r.title}" is back on — next ${untilText(n.nextAt)}.` }; }
-    if (/delete|remove/.test(verb)) { removeRoutine(r.id); return { reply: `Deleted "${r.title}". It is off the timetable.` }; }
+    if (/^(run|executar|rodar)$/.test(verb)) { const task = fire(r, { by: 'you' }); return { reply: `Executando "${r.title}" agora — ${r.agent === a.id ? 'vou cuidar dela' : agentName(r.agent) + ' vai cuidar dela'}. O resultado aparecerá no painel${r.needsOk ? ' e aguardará sua aprovação antes de qualquer envio' : ''}.`, task }; }
+    if (/^(pause|stop|pausar|parar)$/.test(verb)) { editRoutine(r.id, { paused: true }); return { reply: `Rotina "${r.title}" pausada. Diga "retomar ${r.title.toLowerCase()}" para ativá-la novamente.` }; }
+    if (/^(resume|start|unpause|retomar|iniciar)$/.test(verb)) { const n = editRoutine(r.id, { paused: false }); return { reply: `Rotina "${r.title}" retomada — próxima execução ${untilText(n.nextAt)}.` }; }
+    if (/^(delete|remove|excluir|remover)$/.test(verb)) { removeRoutine(r.id); return { reply: `Rotina "${r.title}" excluída da agenda.` }; }
   }
   const p = parseWhen(t);
   if (!p) return null;
   if (!allowed) return { reply: routines.refusal(dept) };
-  if (p.needsDay) return { reply: 'Which day? Say it again with the day: "every Monday at 9am, …".' };
-  if (p.needsTime) return { reply: `What time? Say it again with the time, e.g. "every weekday at 8am, ${p.text ? p.text.slice(0, 60) : '…'}".` };
-  if (!p.text) return { reply: 'I have the time but not the task. Say it again with what should happen.' };
+  if (p.needsDay) return { reply: 'Em qual dia? Diga novamente com o dia, por exemplo: "toda segunda-feira às 9h, …".' };
+  if (p.needsTime) return { reply: `Em qual horário? Diga novamente com o horário, por exemplo: "todo dia útil às 8h, ${p.text ? p.text.slice(0, 60) : '…'}".` };
+  if (!p.text) return { reply: 'Entendi o horário, mas falta a tarefa. Descreva o que deve acontecer.' };
   const made = await makeRoutine({ dept, text: p.text, when: p.when, agent: a.lead ? undefined : a.id });
   if (made.error) return { reply: made.error };
-  const r = made.routine, who = r.agent === a.id ? 'I have it' : `${agentName(r.agent)} has it`;
-  return { reply: `Done. ${r.desc.charAt(0).toUpperCase() + r.desc.slice(1)}, ${who}.${made.guessed ? ` I took "${made.guessed}" as ${r.when.at}; say a time to change it.` : ''} ${r.needsOk ? 'Anything to send waits for your OK first.' : 'It only reads, so it will not wait for you.'} Next run ${untilText(r.nextAt)}. Say "routines" to see the list, "pause ${r.title.toLowerCase()}" to stop it.`, routine: r };
+  const r = made.routine, who = r.agent === a.id ? 'vou cuidar dela' : `${agentName(r.agent)} vai cuidar dela`;
+  return { reply: `Rotina criada. ${r.desc.charAt(0).toUpperCase() + r.desc.slice(1)}; ${who}.${made.guessed ? ` Interpretei "${made.guessed}" como ${r.when.at}; informe outro horário para mudar.` : ''} ${r.needsOk ? 'Qualquer envio aguardará sua aprovação.' : 'Ela apenas consulta dados e não precisa aguardar aprovação.'} Próxima execução ${untilText(r.nextAt)}. Diga "rotinas" para ver a lista ou "pausar ${r.title.toLowerCase()}" para pausá-la.`, routine: r };
 }
 
 /* ---------- http ---------- */
@@ -455,6 +479,7 @@ const discovering = mcp.discover().then(l => { console.log(`  connectors: ${l.fi
 const agentsOut = () => { const setup = setupMap(); return AGENTS.map(a => ({ id: a.id, name: a.name, role: a.role, does: a.does, tools: a.tools, brief: a.brief || '', model: a.model || '', effort: a.effort || '', skills: skills.names(a), lessons: learn.count(BRAIN, a.id), department: a.department, lead: a.lead,
   interviewer: leadOf(a.department).id === a.id, setUp: setup[a.department] })); };
 const server = http.createServer(async (req, res) => {
+  if (!LOCAL_ONLY && !authed(req)) { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Agents Office", charset="UTF-8"' }); return res.end('Agents Office — acesso restrito'); }
   const url = new URL(req.url, 'http://x');
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/command-centre-v2.html' || url.pathname === '/dark')) {
@@ -462,13 +487,19 @@ const server = http.createServer(async (req, res) => {
       const page = fs.readFileSync(HTML, 'utf8');
       return res.end(url.pathname === '/dark' ? page.replace('<body>', '<body class="dark">') : page); // /dark: the same file, opened in dark mode
     }
-    if (url.pathname === '/api/health') return json(res, 200, { ok: true, version, backend, model: cfg.model, modelName: modelName(cfg.model), models: MODEL_KEYS, effort: cfg.effort || '', efforts: EFFORT_KEYS, name: cfg.name, brain: BRAIN, notes: graph.notes, depts: DEPT_KEYS,
+    if (url.pathname === '/api/health') return json(res, 200, { ok: true, version, backend, model: cfg.model, modelName: modelName(cfg.model), models: MODEL_KEYS, providers: { claude: { connected: true, auth: backend }, codex: codexStatus() }, effort: cfg.effort || '', efforts: EFFORT_KEYS, name: cfg.name, brain: BRAIN, notes: graph.notes, depts: DEPT_KEYS,
       agents: agentsOut(), setup: setupMap(), routines: (l => ({ count: l.length, paused: l.filter(r => r.paused).length, depts: routines.ALLOWED }))(loadRoutines()), roster: { customised: roster.customised, briefed: roster.briefed, files: roster.files, problems: roster.problems }, skills: (({ count, shipped, brain, problems }) => ({ count, shipped, brain, problems }))(skills.summary()), tools: backend === 'claude-cli', mcp: mcp.summary(), teams: TEAMS, browser: mcp.summary().browser });
     if (url.pathname === '/api/agents') return json(res, 200, { agents: agentsOut(), problems: roster.problems, files: roster.files });
     if (url.pathname === '/api/skills') return json(res, 200, refreshSkills().summary()); // reloads from disk: edit a skill, hit this, see it
     if (url.pathname === '/api/lessons') return json(res, 200, { dir: learn.dir(BRAIN), agents: AGENTS.map(a => ({ id: a.id, name: a.name, ...learn.read(BRAIN, a.id) })).filter(x => x.rules.length || x.oneOffs.length) });
     if (url.pathname === '/api/mcp') { if (url.searchParams.get('refresh') === '1') await mcp.discover(); else await discovering; return json(res, 200, { ...mcp.summary(), tools: backend === 'claude-cli' }); }
     if (url.pathname === '/api/brain') return json(res, 200, graph);
+    if (url.pathname === '/api/brain/note' && req.method === 'GET') {
+      const id = url.searchParams.get('id');
+      if (!id || id.length > 240 || !graph.nodes.some(n => n.id === id)) return json(res, 404, { error: 'Nota não encontrada' });
+      const content = vaultIndex().get(id);
+      return content == null ? json(res, 404, { error: 'Nota não encontrada' }) : json(res, 200, { id, content });
+    }
     if (url.pathname === '/api/usage') return json(res, 200, await getUsage(url.searchParams.get('refresh') === '1')); // V3.6: the plan's gauge (never a 500: unavailable is an answer)
     if (url.pathname === '/api/tasks' && req.method === 'GET') return json(res, 200, load());
     if (url.pathname === '/api/routines' && req.method === 'GET') return json(res, 200, routinesOut());
@@ -568,8 +599,14 @@ const server = http.createServer(async (req, res) => {
     json(res, 404, { error: 'not found' });
   } catch (e) { console.error(e); json(res, 500, { error: e.message }); }
 });
-server.listen(cfg.port, () => {
+if (!LOCAL_ONLY && !PASSWORD) {
+  console.error(`✗ host ${HOST} would put the office on the network, where anyone who reaches it can run tasks on your Claude login and your connectors.`);
+  console.error('  Set a password first: "password" in office.config.local.json, or AO_PASSWORD=… npm start');
+  process.exit(1);
+}
+server.listen(cfg.port, HOST, () => {
   console.log(`Agents Office ${version} → http://localhost:${cfg.port}`);
+  if (!LOCAL_ONLY) { const ip = Object.values(os.networkInterfaces()).flat().find(n => n && n.family === 'IPv4' && !n.internal)?.address; console.log(`  team: http://${ip || HOST}:${cfg.port} — password required (anyone on this network who has it)`); }
   console.log(`  business: ${cfg.name}   brain: ${BRAIN} (${graph.notes} notes, ${graph.links.length} links)   claude: ${backend} · ${modelName(cfg.model)}${cfg.effort ? ' · effort ' + cfg.effort : ''} by default (routing on Sonnet)`);
   getUsage(true).then(u => console.log(u.source === 'claude' ? `  usage: session ${u.session?.percent ?? '—'}% · week ${u.week?.percent ?? '—'}% (your Claude plan, as Claude Code shows it)` : `  usage: Claude's gauge unavailable (${u.reason}) — showing the office's own count`)).catch(() => {});
   console.log(`  tasks: ${FILE}   notes the agents write: ${NOTES_DIR}`);

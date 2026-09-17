@@ -10,10 +10,11 @@ export const MODELS = {
   sonnet: { key: 'sonnet', name: 'Sonnet', flag: 'sonnet', id: 'claude-sonnet-5' },
   opus:   { key: 'opus',   name: 'Opus',   flag: 'opus',   id: 'claude-opus-5', effort: 'high' },
   fable:  { key: 'fable',  name: 'Fable',  flag: 'fable',  id: 'claude-fable-5-1' },
+  codex:  { key: 'codex',  name: 'Codex',  provider: 'openai', id: 'codex' },
 };
-export const MODEL_KEYS = ['sonnet', 'opus', 'fable'];
+export const MODEL_KEYS = ['sonnet', 'opus', 'fable', 'codex'];
 export const DEFAULT_MODEL = 'sonnet';
-export const FROM_TEXT = { task: 'this task', routine: 'this routine', agent: 'this agent', office: 'office default', model: 'the model\'s own' };
+export const FROM_TEXT = { task: 'this task', routine: 'this routine', agent: 'this agent', office: 'office default', approval: 'approved send', model: 'the model\'s own' };
 export const EFFORT_KEYS = ['low', 'medium', 'high', 'xhigh', 'max'];
 export const EFFORT_NAME = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'X-high', max: 'Max' };
 
@@ -46,6 +47,7 @@ export function normModel(s) {
 }
 export const modelName = k => (MODELS[k] || MODELS[DEFAULT_MODEL]).name;
 export const modelId = k => (MODELS[k] || MODELS[DEFAULT_MODEL]).id;
+export const modelProvider = k => MODELS[normModel(k)]?.provider || 'claude';
 
 /** The one that wins, and where it was set. Each argument is a model key or empty. */
 export function modelFor({ task, routine, agent, office } = {}) {
@@ -58,6 +60,7 @@ export function modelFor({ task, routine, agent, office } = {}) {
 /** The CLI flags for a model key (+ an explicit effort level, else the model's own). */
 export function modelArgs(key, effort) {
   const m = MODELS[normModel(key)] || MODELS[DEFAULT_MODEL];
+  if (m.provider === 'openai') return [];
   const a = ['--model', m.flag];
   const e = normEffort(effort) || m.effort;
   if (e) a.push('--effort', e);

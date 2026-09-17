@@ -5,6 +5,7 @@
 // loop the Beta was built against: change something, run it, fix what is red, repeat.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { loadConfig, ROOT } from './config.mjs';
 
@@ -34,6 +35,11 @@ await step('build: graph has linked notes', async () => {
   if (!BRAIN.nodes.length || !BRAIN.links.length) throw new Error('empty graph');
   if (!BRAIN.floor || BRAIN.floor.length < Math.min(90, BRAIN.nodes.length)) throw new Error('floor layout missing');
   return `${BRAIN.notes} notes · ${BRAIN.nodes.length} linked · ${BRAIN.links.length} links`;
+});
+
+await step('pdf: a deliverable converts to the PDF document', async () => {
+  const out = await sh('node', ['scripts/pdf.mjs', '--self-check']);
+  return out.trim().replace(/^✓\s*/, '');
 });
 
 /* ---------- 1b. the roster + the connector parser ---------- */
@@ -103,8 +109,8 @@ await step('interview: the lead asks five questions, then writes briefs + a skil
     skill: { name: 'Wholesale Quote', description: 'How we quote a wholesale account', agents: ['piper'], body: '# Quoting a wholesale account\nUse this for any quote to a trade customer.\n## Steps\n1. Check the account in 30-Customers.\n## The shape\nFollow template.md.\n## Rules\n- Never discount.', template: '# Quote for {account}\n## Lines\n## Terms' }, try: 'quote Harbour Hardware for 40 units' });
   const ctx = { dept: 'sales', deptName: 'Sales', lead, agents: dept, connected: ['Gmail'], brainPath: brain, dataDir: data, ask: stub, business: 'Test Co' };
   if (await onboard.handle('what are you working on?', ctx) !== null) throw new Error('ordinary chat was captured');
-  const r0 = await onboard.handle('set up', ctx); if (!/Question 1 of 5/.test(r0.reply) || !onboard.active(data, 'sales')) throw new Error('did not start: ' + r0.reply.slice(0, 80));
-  const r1 = await onboard.handle('We sell to trade accounts.', ctx); if (!/Question 2 of 5/.test(r1.reply)) throw new Error('no second question');
+  const r0 = await onboard.handle('configurar', ctx); if (!/Pergunta 1 de 5/.test(r0.reply) || !onboard.active(data, 'sales')) throw new Error('did not start: ' + r0.reply.slice(0, 80));
+  const r1 = await onboard.handle('We sell to trade accounts.', ctx); if (!/Pergunta 2 de 5/.test(r1.reply)) throw new Error('no second question');
   await onboard.handle('Quoting a wholesale account: check the account, price from the ladder, send.', ctx); await onboard.handle('skip', ctx); await onboard.handle('never discount', ctx);
   const r5 = await onboard.handle('Gmail and our bookkeeper', ctx);
   if (onboard.active(data, 'sales')) throw new Error('interview still active after the last answer');
@@ -146,6 +152,14 @@ await step('routines: plain words become a schedule', async () => {
     if (r.text !== task) throw new Error(`"${text}" → task "${r.text}", expected "${task}"`);
     if (!w.valid(r.when) || !(w.nextRun(r.when) > Date.now())) throw new Error('no next run for ' + desc);
   }
+  for (const [text, kind, at, task] of [
+    ['todo dia útil às 8h, revisar a caixa de entrada', 'weekdays', '08:00', 'revisar a caixa de entrada'],
+    ['toda segunda-feira às 9:30, enviar o resumo', 'weekly', '09:30', 'enviar o resumo'],
+    ['a cada 2 horas, conferir os leads', 'hourly', undefined, 'conferir os leads'],
+  ]) {
+    const r = w.parseWhen(text);
+    if (!r || r.when.kind !== kind || r.when.at !== at || r.text !== task || !w.valid(r.when)) throw new Error('Portuguese schedule: ' + JSON.stringify(r));
+  }
   if (w.parseWhen('reply to a client asking when their September report will arrive within 24 hours')) throw new Error('a plain task was read as a routine');
   const t = w.parseWhen('every weekday, triage the inbox'); if (!t || !t.needsTime) throw new Error('missing time not asked back');
   const g = w.parseWhen('every morning triage the inbox'); if (!g || g.when.at !== '08:00' || !g.guessed) throw new Error('"morning" not taken as 08:00 with a flag');
@@ -158,17 +172,17 @@ await step('routines: plain words become a schedule', async () => {
 await step('routines: outside Emails, Accounting and Sales is refused, bad ones named', async () => {
   const rt = await import('./routines.mjs'); const { loadRoster } = await import('./roster.mjs'); const agents = loadRoster().agents;
   const bad = rt.validate({ id: 'x', dept: 'marketing', agent: 'iggy', text: 'post the reel', when: { kind: 'daily', at: '09:00' } }, agents);
-  if (!bad.problems.some(p => /later release/.test(p))) throw new Error('marketing routine not refused: ' + bad.problems);
-  if (!/Emails, Accounting and Sales/.test(rt.refusal('ops'))) throw new Error('refusal sentence');
+  if (!bad.problems.some(p => /próxima versão/.test(p))) throw new Error('marketing routine not refused: ' + bad.problems);
+  if (!/E-mails, Contabilidade e Vendas/.test(rt.refusal('ops'))) throw new Error('refusal sentence');
   const wrong = rt.validate({ dept: 'fin', agent: 'ghost', text: 'x', when: { kind: 'weekly', days: [] } }, agents);
-  if (!wrong.problems.some(p => /no agent/.test(p)) || !wrong.problems.some(p => /not complete/.test(p))) throw new Error('unknown agent / incomplete schedule not named: ' + wrong.problems);
+  if (!wrong.problems.some(p => /não existe agente/.test(p)) || !wrong.problems.some(p => /incompleto/.test(p))) throw new Error('unknown agent / incomplete schedule not named: ' + wrong.problems);
   const cross = rt.validate({ dept: 'fin', agent: 'lexi', text: 'x', when: { kind: 'daily', at: '09:00' } }, agents);
-  if (!cross.problems.some(p => /is in Sales, not Accounting/.test(p))) throw new Error('cross-department agent not named: ' + cross.problems);
+  if (!cross.problems.some(p => /pertence a Vendas, não a Contabilidade/.test(p))) throw new Error('cross-department agent not named: ' + cross.problems);
   const good = rt.validate({ dept: 'emails', agent: 'elead', text: 'Triage the overnight inbox', when: { kind: 'weekdays', at: '08:00' } }, agents);
   if (good.problems.length || good.routine.id !== 'triage-the-overnight-inbox' || good.routine.needsOk !== true) throw new Error('a good routine did not validate: ' + JSON.stringify(good));
   const dup = rt.validate({ id: 'triage-the-overnight-inbox', dept: 'emails', agent: 'elead', text: 'x', when: { kind: 'daily', at: '09:00' } }, agents, [good.routine]);
-  if (!dup.problems.some(p => /share this id/.test(p))) throw new Error('duplicate id not named');
-  if (rt.guessNeedsOk('list the overdue invoices') || !rt.guessNeedsOk('send the reminders') || !rt.guessNeedsOk('draft replies to unanswered client emails')) throw new Error('needs-OK guess');
+  if (!dup.problems.some(p => /mesmo identificador/.test(p))) throw new Error('duplicate id not named');
+  if (rt.guessNeedsOk('list the overdue invoices') || !rt.guessNeedsOk('send the reminders') || !rt.guessNeedsOk('draft replies to unanswered client emails') || rt.guessNeedsOk('conferir pagamentos') || !rt.guessNeedsOk('enviar o relatório')) throw new Error('needs-OK guess');
   return 'marketing refused · unknown agent, wrong department, incomplete schedule, duplicate id all named · needsOk defaults on';
 });
 await step('routines: due fires once, a missed run catches up marked LATE, then the clock moves on', async () => {
@@ -192,10 +206,10 @@ await step('routines: due fires once, a missed run catches up marked LATE, then 
 });
 
 /* ---------- 1d. models + the usage gauge (V3.6) ---------- */
-await step('models: three names + five effort levels, one precedence, the right CLI flags', async () => {
+await step('models: Claude and Codex, one precedence, the right CLI flags', async () => {
   const m = await import('./src/models.js');
-  if (JSON.stringify(m.MODEL_KEYS) !== '["sonnet","opus","fable"]' || m.DEFAULT_MODEL !== 'sonnet') throw new Error('keys/default');
-  if (m.normModel('Opus') !== 'opus' || m.normModel('claude-sonnet-5') !== 'sonnet' || m.normModel('haiku') !== null || m.normModel('') !== null) throw new Error('normModel');
+  if (JSON.stringify(m.MODEL_KEYS) !== '["sonnet","opus","fable","codex"]' || m.DEFAULT_MODEL !== 'sonnet') throw new Error('keys/default');
+  if (m.normModel('Opus') !== 'opus' || m.normModel('claude-sonnet-5') !== 'sonnet' || m.normModel('Codex') !== 'codex' || m.normModel('haiku') !== null || m.normModel('') !== null) throw new Error('normModel');
   const p = (o) => m.modelFor(o); 
   if (p({}).model !== 'sonnet' || p({}).from !== 'office') throw new Error('empty → office sonnet');
   if (p({ office: 'opus' }).model !== 'opus' || p({ agent: 'fable', office: 'opus' }).from !== 'agent' || p({ routine: 'opus', agent: 'fable' }).model !== 'opus' || p({ task: 'sonnet', routine: 'opus', agent: 'fable', office: 'opus' }).from !== 'task') throw new Error('precedence');
@@ -207,13 +221,19 @@ await step('models: three names + five effort levels, one precedence, the right 
   if (e({ model: 'opus' }).effort !== 'high' || e({ model: 'opus' }).from !== 'model' || e({ model: 'sonnet' }).effort !== null) throw new Error('effort falls through to the model');
   if (e({ office: 'low', model: 'opus' }).effort !== 'low' || e({ agent: 'max', office: 'low' }).from !== 'agent' || e({ routine: 'medium', agent: 'max' }).effort !== 'medium' || e({ task: 'xhigh', routine: 'medium', agent: 'max', office: 'low' }).from !== 'task') throw new Error('effort precedence');
   if (m.modelArgs('sonnet', 'max').join(' ') !== '--model sonnet --effort max' || m.modelArgs('opus', 'low').join(' ') !== '--model opus --effort low' || m.modelArgs('opus', 'nonsense').join(' ') !== '--model opus --effort high') throw new Error('effort args');
+  if (m.modelProvider('codex') !== 'openai' || m.modelProvider('sonnet') !== 'claude' || p({ task: 'codex', agent: 'opus' }).model !== 'codex') throw new Error('provider routing');
+  const cx = await import('./codex.mjs');
+  if (!cx.codexArgs('high').includes('model_reasoning_effort="high"') || !cx.codexArgs().includes('read-only') || cx.codexEvent({ type: 'item.completed', item: { type: 'agent_message', text: 'feito' } }).text !== 'feito' || !cx.codexEvent({ type: 'turn.completed' }).done) throw new Error('Codex CLI contract');
   const { validate } = await import('./roster.mjs');
   const r = validate({ agents: [{ id: 'invo', model: 'OPUS', effort: 'High' }, { id: 'lexi', model: 'haiku', effort: 'turbo' }] });
-  if (r.agents.find(a => a.id === 'invo').model !== 'opus' || r.agents.find(a => a.id === 'lexi').model !== '' || !r.problems.some(x => /sonnet, opus or fable/.test(x))) throw new Error('roster model field');
+  if (r.agents.find(a => a.id === 'invo').model !== 'opus' || r.agents.find(a => a.id === 'lexi').model !== '' || !r.problems.some(x => /sonnet, opus, fable or codex/.test(x))) throw new Error('roster model field');
+  const mapped = validate({ agents: [{ id: 'lexi', model: 'codex' }] });
+  if (mapped.agents.find(a => a.id === 'lexi').model !== 'codex') throw new Error('Codex roster mapping');
   if (r.agents.find(a => a.id === 'invo').effort !== 'high' || r.agents.find(a => a.id === 'lexi').effort !== '' || !r.problems.some(x => /low, medium, high, xhigh or max/.test(x))) throw new Error('roster effort field');
   const rt = await import('./routines.mjs'); const { loadRoster } = await import('./roster.mjs');
   const v = rt.validate({ dept: 'fin', agent: 'invo', text: 'x', when: { kind: 'daily', at: '09:00' }, model: 'Fable', effort: 'xhigh' }, loadRoster().agents); if (v.problems.length || v.routine.model !== 'fable' || v.routine.effort !== 'xhigh') throw new Error('routine model/effort field');
-  return 'sonnet · opus (effort high) · fable · task > routine > agent > office · roster and routines refuse anything else';
+  const cv = rt.validate({ dept: 'fin', agent: 'invo', text: 'x', when: { kind: 'daily', at: '09:00' }, model: 'codex' }, loadRoster().agents); if (cv.problems.length || cv.routine.model !== 'codex') throw new Error('Codex routine mapping');
+  return 'Sonnet · Opus · Fable · Codex · task > routine > agent > office';
 });
 await step('usage: the gauge parses Claude\'s answer and the office\'s own count sits underneath', async () => {
   const u = await import('./usage.mjs');
@@ -232,7 +252,7 @@ await step('usage: the gauge parses Claude\'s answer and the office\'s own count
 /* ---------- 1e. Agent Teams + Claude in Chrome (V3.2 (16 Sep)) ---------- */
 await step('teams: the sentence says team, the plan is checked against the seats, notes are parsed', async () => {
   const t = await import('./teams.mjs');
-  for (const ok of ['as a team, write three hooks', 'get the team on this', 'spawn three teammates to plan the launch', 'split it across the desks']) if (!t.intent(ok)) throw new Error('not a team: ' + ok);
+  for (const ok of ['as a team, write three hooks', 'get the team on this', 'spawn three teammates to plan the launch', 'split it across the desks', 'em equipe, preparar a campanha']) if (!t.intent(ok)) throw new Error('not a team: ' + ok);
   for (const no of ['write three hooks', 'draft the team offsite email', 'reply to the client']) if (t.intent(no)) throw new Error('wrongly a team: ' + no);
   if (t.askedSize('spawn three teammates') !== 3 || t.askedSize('as a team') !== null) throw new Error('askedSize');
   const seats = [{ id: 'mlead', lead: true }, { id: 'ada' }, { id: 'newt' }, { id: 'gfx' }], lead = seats[0];
@@ -311,7 +331,7 @@ else {
     catch { browser = await chromium.launch({ channel: 'chrome', args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] }); }
     const page = await browser.newPage({ viewport: { width: 1512, height: 900 } });
     const errors = []; page.on('pageerror', e => errors.push(e.message)); page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 120)); });
-    await page.goto('file://' + path.join(ROOT, 'dist', 'command-centre-v2.html') + '?s=check'); await page.waitForTimeout(3000);
+    await page.goto('file://' + path.join(ROOT, 'dist', 'command-centre-v2.html') + '?s=check&lang=en'); await page.waitForTimeout(3000);
     await step('smoke: loads without page errors', async () => { if (errors.length) throw new Error(errors[0]); });
     await step('smoke: 35 agents at their desks', async () => { const n = await page.evaluate(() => Object.keys(window.CC.R).length); if (n !== 35) throw new Error('agents: ' + n); return n + ' agents'; });
     await step('smoke: six department cards + the Brain tag', async () => {
@@ -322,6 +342,27 @@ else {
       const n = await page.evaluate(() => document.querySelectorAll('.tp-row').length); if (n < 10) throw new Error('rows: ' + n);
       const chips = await page.evaluate(() => document.querySelectorAll('.tp-chip').length); if (chips !== 6) throw new Error('chips: ' + chips);
       return n + ' rows';
+    });
+    await step('smoke: all tasks scroll and the panel can be collapsed and reopened', async () => {
+      const state = await page.evaluate(() => {
+        const rows = document.querySelector('.tp-rows');
+        return { shown: rows.querySelectorAll('.tp-row').length, total: +document.querySelector('.tp-chip[data-f="all"] b').textContent,
+          overflow: rows.scrollHeight > rows.clientHeight, more: !document.querySelector('.tp-scroll-more').hidden };
+      });
+      if (state.shown !== state.total || !state.overflow || !state.more) throw new Error(JSON.stringify(state));
+      await page.click('.tp-scroll-more'); await page.waitForTimeout(350);
+      if (!await page.$eval('.tp-rows', e => e.scrollTop > 0)) throw new Error('the task list did not scroll');
+      await page.fill('.tp-in', 'draft to keep');
+      await page.click('#tpanelToggle');
+      try {
+        await page.waitForFunction(() => { const e = document.querySelector('#tpanel'); return e.inert && e.getBoundingClientRect().left >= innerWidth - 1; }, null, { timeout: 5000 });
+      } finally {
+        await page.click('#tpanelToggle');
+        await page.waitForFunction(() => { const e = document.querySelector('#tpanel'); return !e.inert && e.getBoundingClientRect().right <= innerWidth - 17; }, null, { timeout: 5000 });
+      }
+      if (await page.$eval('.tp-in', e => e.value) !== 'draft to keep') throw new Error('the draft was lost');
+      await page.fill('.tp-in', '');
+      return `${state.shown} tasks · scroll, collapse, reopen and draft preserved`;
     });
     await step('smoke: command bar adds a task in demo mode', async () => {
       await page.click('.tp-dd'); await page.click('.tp-menu button[data-k="marketing"]');
@@ -369,7 +410,7 @@ else {
       await page.fill('.tp-in', 'every day at 9am post the reel'); await page.keyboard.press('Enter'); await page.waitForTimeout(400);
       const no = await page.evaluate(() => document.querySelector('.tp-hint').textContent); if (!/later release/.test(no)) throw new Error('marketing not refused: ' + no);
       const still = await page.evaluate(() => window.CC.routines().length); if (still !== 1) throw new Error('a refused routine was added');
-      const opts = await page.evaluate(() => [...document.querySelectorAll('.tp-model option')].map(o => o.value).join(',') + '|' + document.querySelector('.tp-model').value); if (opts !== 'sonnet,opus,fable|sonnet') throw new Error('model menu: ' + opts);
+      const opts = await page.evaluate(() => [...document.querySelectorAll('.tp-model option')].map(o => o.value).join(',') + '|' + document.querySelector('.tp-model').value); if (opts !== 'sonnet,opus,fable,codex|sonnet') throw new Error('model menu: ' + opts);
       const eff = await page.evaluate(() => [...document.querySelectorAll('.tp-effort option')].map(o => o.value).join(',') + '|' + document.querySelector('.tp-effort').value); if (eff !== ',low,medium,high,xhigh,max|') throw new Error('effort menu: ' + eff);
       // V3.7: the box grows with the text, and the big editor mirrors it both ways
       await page.fill('.tp-in', 'line one\nline two\nline three'); await page.evaluate(() => document.querySelector('.tp-in').dispatchEvent(new Event('input', { bubbles: true }))); await page.waitForTimeout(200);
@@ -450,7 +491,7 @@ else {
 /* ---------- 3. server smoke ---------- */
 {
   const port = 4600 + Math.floor(Math.random() * 300);
-  const env = { ...process.env, PORT: String(port) };
+  const env = { ...process.env, PORT: String(port), AO_HOST: '', AO_PASSWORD: '' }; // neutral: whatever the owner configured, the smoke runs on an open localhost office
   const srv = spawn('node', ['serve.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = ''; srv.stdout.on('data', d => { log += d; }); srv.stderr.on('data', d => { log += d; });
   const base = `http://localhost:${port}`;
@@ -468,7 +509,8 @@ else {
     });
     await step('server: /api/health carries the roster', async () => { if (!Array.isArray(up.agents) || up.agents.length !== 35) throw new Error('agents: ' + (up.agents && up.agents.length)); if (!up.agents[0].does) throw new Error('no job description'); });
     await step('server: the office default is Sonnet and /api/usage always answers', async () => {
-      if (up.model !== 'sonnet' || JSON.stringify(up.models) !== '["sonnet","opus","fable"]') throw new Error('health model: ' + up.model);
+      if (up.model !== 'sonnet' || JSON.stringify(up.models) !== '["sonnet","opus","fable","codex"]') throw new Error('health model: ' + up.model);
+      if (!up.providers?.claude?.connected || typeof up.providers?.codex?.connected !== 'boolean') throw new Error('provider status missing');
       if (up.effort !== '' || JSON.stringify(up.efforts) !== '["low","medium","high","xhigh","max"]') throw new Error('health effort: ' + up.effort);
       const r = await fetch(base + '/api/usage'); if (r.status !== 200) throw new Error('status ' + r.status); const u = await r.json();
       if (!u.ok || !['claude', 'office'].includes(u.source)) throw new Error(JSON.stringify(u).slice(0, 120));
@@ -492,7 +534,7 @@ else {
     });
     await step('server: a routine outside Emails, Accounting and Sales is refused with a sentence', async () => {
       const r = await fetch(base + '/api/routines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: 'marketing', text: 'every day at 9am post the reel' }) });
-      const j = await r.json(); if (r.status !== 400 || !j.refused || !/later release/.test(j.error)) throw new Error(r.status + ' ' + JSON.stringify(j));
+      const j = await r.json(); if (r.status !== 400 || !j.refused || !/próxima versão/.test(j.error)) throw new Error(r.status + ' ' + JSON.stringify(j));
       const t = await fetch(base + '/api/routines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: 'emails', text: 'every weekday, triage the inbox' }) });
       const k = await t.json(); if (t.status !== 400 || !k.needsTime) throw new Error('missing time not asked back: ' + JSON.stringify(k));
       const n = await fetch(base + '/api/routines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: 'sales', text: 'chase the quiet deals' }) });
@@ -514,6 +556,20 @@ else {
       return j.error;
     });
     await step('server: rejects an empty task', async () => { const r = await fetch(base + '/api/tasks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"dept":"sales","text":""}' }); if (r.status !== 400) throw new Error('status ' + r.status); });
+    if (chromium) await step('server: a live board shows only real tasks, never the demo morning', async () => {
+      let browser; try { browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] }); } catch { browser = await chromium.launch({ channel: 'chrome' }); }
+      try {
+        const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+        await page.goto(base + '/');
+        await page.waitForFunction(() => window.CC && window.CC.tasks && window.CC.tasks.isLive(), null, { timeout: 25000 });
+        await page.waitForTimeout(9000); // past the Brain's 6-22 s invented job and one poll
+        const all = await page.evaluate(() => window.CC.tasks.tasks.map(t => ({ real: !!(t.live || t.piece), title: t.title })));
+        const fake = all.filter(t => !t.real);
+        if (fake.length) throw new Error(`${fake.length} demo task(s) on a live board: ` + fake.slice(0, 3).map(t => t.title).join(' | '));
+        const done = await page.evaluate(() => [...document.querySelectorAll('[data-tk$="-done"]')].reduce((s, e) => s + (+e.textContent || 0), 0));
+        return `${all.length} task(s), all from the server \u00b7 done counters ${done}`;
+      } finally { await browser.close(); }
+    });
     if (LIVE) {
       await step('live: Claude routes a task', async () => {
         const r = await fetch(base + '/api/tasks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dept: 'emails', text: 'reply to a client asking when their September report will arrive' }) });
@@ -590,7 +646,7 @@ else {
         try {
           const page = await browser.newPage({ viewport: { width: 1512, height: 900 } });
           const errs = []; page.on('pageerror', e => errs.push(e.message));
-          await page.goto(base + '/'); await page.waitForTimeout(3500);
+          await page.goto(base + '/?lang=en'); await page.waitForTimeout(3500);
           const mode = await page.evaluate(() => document.querySelector('.tp-mode').textContent); if (!/LIVE/.test(mode)) throw new Error('panel not live: ' + mode);
           const before = await page.evaluate(() => window.CC.brain.nodes.length);
           const known = await page.evaluate(() => window.CC.tasks.tasks.filter(t => t.live).map(t => t.id));
@@ -615,6 +671,59 @@ else {
     } else ok('live: skipped', 'set CHECK_LIVE=1 to route one task and one chat through Claude');
   }
   srv.kill();
+}
+
+/* ---------- 3b. who may open it (V3.2.1) ---------- */
+{
+  const start = (extra) => { // one office on its own port, with whatever env the case needs
+    const port = 4900 + Math.floor(Math.random() * 300);
+    const srv = spawn('node', ['serve.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(port), ...extra }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let log = ''; srv.stdout.on('data', d => { log += d; }); srv.stderr.on('data', d => { log += d; });
+    return { srv, port, base: `http://127.0.0.1:${port}`, log: () => log, exit: new Promise(r => srv.on('exit', r)) };
+  };
+  const wait = async (base, headers) => { for (let i = 0; i < 40; i++) { try { return await fetch(base + '/api/health', { headers }); } catch {} await new Promise(r => setTimeout(r, 250)); } return null; };
+
+  await step('access: the office refuses to go on the network without a password', async () => {
+    const o = start({ AO_HOST: '0.0.0.0', AO_PASSWORD: '' });
+    const code = await Promise.race([o.exit, new Promise(r => setTimeout(() => r('still running'), 6000))]);
+    if (code === 'still running') { o.srv.kill(); throw new Error('it bound to 0.0.0.0 with no password'); }
+    if (code === 0) throw new Error('exited clean — it should refuse');
+    if (!/password/i.test(o.log())) throw new Error('refused without saying why: ' + o.log().trim().split('\n').pop());
+    return 'exits and says to set a password';
+  });
+
+  await step('access: with a password, the right one gets in and the wrong one does not', async () => {
+    const pass = 'senha-de-teste-' + Math.random().toString(36).slice(2);
+    const o = start({ AO_HOST: '0.0.0.0', AO_PASSWORD: pass });
+    try {
+      const head = p => ({ authorization: 'Basic ' + Buffer.from('office:' + p).toString('base64') });
+      const good = await wait(o.base, head(pass));
+      if (!good) throw new Error('never came up: ' + o.log().trim().split('\n').slice(-2).join(' | '));
+      if (!good.ok) throw new Error('the right password got ' + good.status);
+      const none = await fetch(o.base + '/api/health');
+      if (none.status !== 401) throw new Error('no password got ' + none.status + ' — it should be 401');
+      if (!/Basic/.test(none.headers.get('www-authenticate') || '')) throw new Error('no Basic challenge, so no browser login box');
+      const wrong = await fetch(o.base + '/api/health', { headers: head(pass + 'x') });
+      if (wrong.status !== 401) throw new Error('a wrong password got ' + wrong.status);
+      const short = await fetch(o.base + '/api/health', { headers: head('x') });
+      if (short.status !== 401) throw new Error('a short password got ' + short.status); // length mismatch must not throw
+      const page = await fetch(o.base + '/');
+      if (page.status !== 401) throw new Error('the page itself is open: ' + page.status);
+      return 'right 200 · none 401 + Basic challenge · wrong 401 · short 401 · page closed too';
+    } finally { o.srv.kill(); }
+  });
+
+  await step('access: by default it listens on this machine only', async () => {
+    const o = start({ AO_HOST: '', AO_PASSWORD: '' }); // nothing configured — the shipped default
+    try {
+      const r = await wait(o.base); if (!r || !r.ok) throw new Error('localhost is closed: ' + o.log().trim().split('\n').slice(-2).join(' | '));
+      const ip = Object.values(os.networkInterfaces()).flat().find(n => n && n.family === 'IPv4' && !n.internal)?.address;
+      if (!ip) return 'localhost open · no LAN address on this machine to test against';
+      const lan = await fetch(`http://${ip}:${o.port}/api/health`, { signal: AbortSignal.timeout(2500) }).then(() => 'answered').catch(() => 'refused');
+      if (lan === 'answered') throw new Error(`${ip}:${o.port} answered — the default bind is still on the network`);
+      return `localhost open · ${ip} refused`;
+    } finally { o.srv.kill(); }
+  });
 }
 
 /* ---------- summary ---------- */

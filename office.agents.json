@@ -1,13 +1,13 @@
 {
-  "_about": "The 35 agents of your office. Change name, role, does, tools and brief (standing instructions) freely; id, department and lead are fixed (six pods, 35 seats). Put personal edits in office.agents.local.json (gitignored) so git pull never overwrites them. Ask Claude Code in this folder to change agents for you — see CLAUDE.md.",
+  "_about": "Os 35 agentes do escritório. Você pode alterar name, role, does, tools e brief; id, department e lead são fixos. Guarde personalizações em office.agents.local.json (ignorado pelo Git).",
   "agents": [
     {
       "id": "elead",
       "department": "emails",
       "lead": true,
-      "name": "EMAILS LEAD",
-      "role": "Inbox Lead",
-      "does": "Runs the whole inbox: routes every email to the right desk, checks tone, and escalates only what needs the owner.",
+      "name": "LIDERANÇA DE E-MAILS",
+      "role": "Líder da caixa de entrada",
+      "does": "Coordena a caixa de entrada: encaminha cada e-mail ao agente certo, revisa o tom e escala apenas o que precisa da pessoa responsável.",
       "tools": [
         "gmail",
         "notion"
@@ -17,9 +17,9 @@
       "id": "cmail",
       "department": "emails",
       "lead": false,
-      "name": "CLIENT EMAILS",
-      "role": "Client Email Agent",
-      "does": "Answers every client email from the Brain — scope, timelines, results — and never lets one sit past an hour.",
+      "name": "E-MAILS DE CLIENTES",
+      "role": "Agente de e-mails de clientes",
+      "does": "Responde aos e-mails de clientes com base nas notas, incluindo escopo, prazos e resultados, sem deixar uma mensagem esperando mais de uma hora.",
       "tools": [
         "gmail"
       ]
@@ -28,9 +28,9 @@
       "id": "imail",
       "department": "emails",
       "lead": false,
-      "name": "INTERNAL EMAILS",
-      "role": "Internal Email Agent",
-      "does": "Keeps the team inbox moving — triage, summaries of long threads, calendar holds, and the weekly numbers circulated.",
+      "name": "E-MAILS INTERNOS",
+      "role": "Agente de e-mails internos",
+      "does": "Mantém a comunicação da equipe em dia: triagem, resumos de conversas longas, convites de calendário e divulgação dos números semanais.",
       "tools": [
         "gmail",
         "notion"
@@ -40,9 +40,9 @@
       "id": "vmail",
       "department": "emails",
       "lead": false,
-      "name": "VENDOR EMAILS",
-      "role": "Vendor Email Agent",
-      "does": "Handles every supplier thread — quotes, renewals, SLAs, outages — and flags anything that changes what we pay.",
+      "name": "E-MAILS DE FORNECEDORES",
+      "role": "Agente de fornecedores",
+      "does": "Cuida das conversas com fornecedores sobre cotações, renovações, acordos de serviço e falhas; sinaliza mudanças de custo.",
       "tools": [
         "gmail"
       ]
@@ -51,9 +51,9 @@
       "id": "kmail",
       "department": "emails",
       "lead": false,
-      "name": "CONTRACTOR EMAILS",
-      "role": "Contractor Email Agent",
-      "does": "Talks to the freelancers — briefs out, hours in, invoice questions answered against the contract.",
+      "name": "E-MAILS DE PRESTADORES",
+      "role": "Agente de prestadores",
+      "does": "Conversa com freelancers: envia briefings, confere horas e responde a dúvidas sobre faturas conforme o contrato.",
       "tools": [
         "gmail"
       ]
@@ -62,9 +62,9 @@
       "id": "lexi",
       "department": "sales",
       "lead": true,
-      "name": "SALES LEAD",
-      "role": "Sales Team Lead Agent",
-      "does": "Runs the sales team — five agents report to it — and it owns the reps’ call lists.",
+      "name": "LIDERANÇA DE VENDAS",
+      "role": "Líder da equipe de vendas",
+      "does": "Coordena a equipe comercial e as listas de contatos usadas pelos representantes.",
       "tools": [
         "notion",
         "gmail"
@@ -74,9 +74,9 @@
       "id": "enzo",
       "department": "sales",
       "lead": false,
-      "name": "LEAD ENRICHER",
-      "role": "Prospect Enrichment Agent",
-      "does": "Enriches every signup via FullEnrich — role, company size, mobile, LinkedIn.",
+      "name": "ENRIQUECIMENTO DE LEADS",
+      "role": "Agente de enriquecimento de leads",
+      "does": "Complementa os dados dos leads com cargo, porte da empresa, telefone e LinkedIn.",
       "tools": [
         "fullenrich"
       ]
@@ -85,9 +85,9 @@
       "id": "ilm",
       "department": "sales",
       "lead": false,
-      "name": "INBOUND LEADS MANAGER",
-      "role": "Inbound Leads Manager",
-      "does": "Owns every lead that comes to us — qualifies it within the hour, routes the hot ones to a rep, books the calls.",
+      "name": "GESTÃO DE LEADS RECEBIDOS",
+      "role": "Gestor de leads recebidos",
+      "does": "Qualifica os leads recebidos, encaminha os mais promissores e agenda conversas comerciais.",
       "tools": [
         "gmail",
         "imessage",
@@ -98,9 +98,9 @@
       "id": "pros",
       "department": "sales",
       "lead": false,
-      "name": "PROSPECTOR",
-      "role": "Outbound Prospecting Agent",
-      "does": "Builds fresh outbound lead lists to ICP spec — verified before anyone dials.",
+      "name": "PROSPECÇÃO",
+      "role": "Agente de prospecção",
+      "does": "Encontra e qualifica empresas e contatos para novas oportunidades comerciais.",
       "tools": [
         "apollo",
         "gmail"
@@ -110,9 +110,9 @@
       "id": "piper",
       "department": "sales",
       "lead": false,
-      "name": "PROPOSALS",
-      "role": "Proposal Agent",
-      "does": "Turns a deal brief into a proposal + send-ready email in minutes.",
+      "name": "PROPOSTAS",
+      "role": "Agente de propostas",
+      "does": "Prepara propostas comerciais, preços e documentos para potenciais clientes.",
       "tools": [
         "notion",
         "gmail"
@@ -122,9 +122,9 @@
       "id": "folo",
       "department": "sales",
       "lead": false,
-      "name": "FOLLOW UPS",
-      "role": "Second-Touch & Revival Agent",
-      "does": "Chases everything that went quiet — unanswered calls, post-demo silence, stalled deals.",
+      "name": "ACOMPANHAMENTO",
+      "role": "Agente de acompanhamento",
+      "does": "Acompanha propostas enviadas, retoma contatos e registra o andamento das negociações.",
       "tools": [
         "gmail",
         "imessage"
@@ -134,9 +134,9 @@
       "id": "mlead",
       "department": "marketing",
       "lead": true,
-      "name": "MARKETING LEAD",
-      "role": "Marketing Lead",
-      "does": "Runs the marketing team — six agents report to it — owns the content calendar and the ad budget, and reports what worked to AJ weekly.",
+      "name": "LIDERANÇA DE MARKETING",
+      "role": "Líder de marketing",
+      "does": "Coordena o conteúdo, as campanhas e as prioridades da equipe de marketing.",
       "tools": [
         "meta",
         "clarity",
@@ -147,9 +147,9 @@
       "id": "riley",
       "department": "marketing",
       "lead": false,
-      "name": "RESEARCH",
-      "role": "Daily Research Agent",
-      "does": "Scans the sales-tech industry and competitors every morning at 6am.",
+      "name": "PESQUISA",
+      "role": "Agente de pesquisa",
+      "does": "Pesquisa mercado, concorrentes, fontes e tendências para orientar as decisões.",
       "tools": [
         "meta",
         "beehiiv",
@@ -162,8 +162,8 @@
       "department": "marketing",
       "lead": false,
       "name": "NEWSLETTER",
-      "role": "Newsletter Creator Agent",
-      "does": "Writes the monthly newsletter your signups actually open.",
+      "role": "Agente de newsletter",
+      "does": "Planeja, escreve e analisa newsletters e sequências de boas-vindas.",
       "tools": [
         "beehiiv",
         "loops"
@@ -173,9 +173,9 @@
       "id": "gfx",
       "department": "marketing",
       "lead": false,
-      "name": "GRAPHICS DESIGNER",
-      "role": "Marketing Design Agent",
-      "does": "Designs everything marketing ships — ads, carousels, decks — on one brand kit.",
+      "name": "DESIGN GRÁFICO",
+      "role": "Designer gráfico",
+      "does": "Cria peças visuais, miniaturas, capas e materiais de campanha.",
       "tools": [
         "canva"
       ]
@@ -184,9 +184,9 @@
       "id": "ada",
       "department": "marketing",
       "lead": false,
-      "name": "META ADS",
-      "role": "Meta Ads Agent",
-      "does": "Watches every campaign hourly; flags what to scale, kill or fix.",
+      "name": "ANÚNCIOS META",
+      "role": "Agente de anúncios",
+      "does": "Acompanha e ajusta campanhas de anúncios na Meta, incluindo orçamento e resultados.",
       "tools": [
         "meta",
         "clarity"
@@ -196,9 +196,9 @@
       "id": "iggy",
       "department": "marketing",
       "lead": false,
-      "name": "INSTAGRAM ORGANIC",
-      "role": "Instagram Organic Content Agent",
-      "does": "Runs the IG content engine — hooks, reels, carousels. Nothing posts without the owner.",
+      "name": "INSTAGRAM ORGÂNICO",
+      "role": "Agente de Instagram",
+      "does": "Cuida das publicações, legendas e mensagens do Instagram orgânico.",
       "tools": [
         "canva",
         "clarity"
@@ -208,9 +208,9 @@
       "id": "vid",
       "department": "marketing",
       "lead": false,
-      "name": "VIDEO EDITOR",
-      "role": "Video Editing Agent",
-      "does": "Cuts every video marketing ships — reels, ads, demos — rendered frame-perfect on HyperFrames.",
+      "name": "EDIÇÃO DE VÍDEO",
+      "role": "Editor de vídeo",
+      "does": "Edita vídeos, reels, legendas e versões para diferentes formatos.",
       "tools": [
         "hyperframes",
         "canva"
@@ -220,9 +220,9 @@
       "id": "olead",
       "department": "ops",
       "lead": true,
-      "name": "OPERATIONS LEAD",
-      "role": "Operations Lead",
-      "does": "Runs operations — five agents report to it — keeps contracts, compliance, intel and reporting moving, and escalates only what needs AJ.",
+      "name": "LIDERANÇA DE OPERAÇÕES",
+      "role": "Líder de operações",
+      "does": "Coordena contratos, fornecedores, relatórios internos e prioridades operacionais.",
       "tools": [
         "notion",
         "gmail",
@@ -233,9 +233,9 @@
       "id": "scout",
       "department": "ops",
       "lead": false,
-      "name": "INTEL",
-      "role": "Competitor & Industry Analysis Agent",
-      "does": "Turns Research’s raw findings into “here’s what we should do about it.”",
+      "name": "INTELIGÊNCIA",
+      "role": "Agente de inteligência de mercado",
+      "does": "Acompanha concorrentes e oportunidades e prepara análises para a equipe.",
       "tools": [
         "notion"
       ]
@@ -244,9 +244,9 @@
       "id": "legal",
       "department": "ops",
       "lead": false,
-      "name": "LEGAL REVIEW",
-      "role": "Agreement Review Agent",
-      "does": "Reads every agreement before it goes out and gives it a second lens.",
+      "name": "REVISÃO JURÍDICA",
+      "role": "Agente de revisão jurídica",
+      "does": "Revisa contratos, cláusulas e documentos jurídicos e sinaliza pontos de atenção.",
       "tools": [
         "pandadoc",
         "gmail"
@@ -256,9 +256,9 @@
       "id": "comply",
       "department": "ops",
       "lead": false,
-      "name": "COMPLIANCE CHECKER",
-      "role": "Regulatory Watch Agent",
-      "does": "Watches government and regulator sites daily and reports what changed.",
+      "name": "CONFORMIDADE",
+      "role": "Agente de conformidade",
+      "does": "Verifica políticas, consentimento, retenção de dados e requisitos regulatórios.",
       "tools": [
         "notion",
         "gmail"
@@ -268,9 +268,9 @@
       "id": "report",
       "department": "ops",
       "lead": false,
-      "name": "INTERNAL REPORTING",
-      "role": "Company Reporting Agent",
-      "does": "Builds the reports and keeps every company dashboard current.",
+      "name": "RELATÓRIOS INTERNOS",
+      "role": "Agente de relatórios internos",
+      "does": "Reúne indicadores e prepara relatórios para a gestão.",
       "tools": [
         "gmail",
         "notion"
@@ -280,9 +280,9 @@
       "id": "dash",
       "department": "ops",
       "lead": false,
-      "name": "INTERNAL DASHBOARDS",
-      "role": "Dashboards Agent",
-      "does": "Builds and keeps the internal dashboards honest — every tile traces to a number in the Brain, refreshed on schedule.",
+      "name": "PAINÉIS INTERNOS",
+      "role": "Agente de painéis internos",
+      "does": "Cria e mantém painéis com indicadores de vendas, entregas e operações.",
       "tools": [
         "notion"
       ]
@@ -291,9 +291,9 @@
       "id": "alead",
       "department": "fin",
       "lead": true,
-      "name": "ACCOUNTING LEAD",
-      "role": "Accounting Lead Agent",
-      "does": "Runs the accounting team: Invoicing, Payables, Reconciliation report to it.",
+      "name": "LIDERANÇA CONTÁBIL",
+      "role": "Líder de contabilidade",
+      "does": "Coordena fluxo de caixa, pagamentos, conciliações e fechamento financeiro.",
       "tools": [
         "xero",
         "gmail"
@@ -303,9 +303,9 @@
       "id": "invo",
       "department": "fin",
       "lead": false,
-      "name": "INVOICING",
-      "role": "Invoicing Agent",
-      "does": "Raises every invoice, chases every overdue — politely and relentlessly.",
+      "name": "FATURAMENTO",
+      "role": "Agente de faturamento",
+      "does": "Emite faturas, acompanha vencimentos e prepara notas de crédito.",
       "tools": [
         "xero",
         "stripe"
@@ -315,9 +315,9 @@
       "id": "apay",
       "department": "fin",
       "lead": false,
-      "name": "ACCOUNTS PAYABLE",
-      "role": "Accounts Payable Agent",
-      "does": "Audits every card charge and contractor invoice against what we actually agreed to pay.",
+      "name": "CONTAS A PAGAR",
+      "role": "Agente de contas a pagar",
+      "does": "Confere cobranças e contratos, organiza pagamentos e sinaliza divergências.",
       "tools": [
         "xero"
       ]
@@ -326,9 +326,9 @@
       "id": "recon",
       "department": "fin",
       "lead": false,
-      "name": "RECONCILIATION",
-      "role": "Accounts Reconciliation Agent",
-      "does": "Matches every bank line to an invoice or bill. Unmatched = investigated.",
+      "name": "CONCILIAÇÃO",
+      "role": "Agente de conciliação",
+      "does": "Concilia extratos, pagamentos, repasses e faturas.",
       "tools": [
         "stripe",
         "xero"
@@ -338,9 +338,9 @@
       "id": "dlead",
       "department": "delivery",
       "lead": true,
-      "name": "DELIVERY LEAD",
-      "role": "Delivery Lead",
-      "does": "Owns every live project end to end — risk, timelines, staffing, handovers — and reports the state of play to the owner weekly.",
+      "name": "LIDERANÇA DE ENTREGAS",
+      "role": "Líder de entregas",
+      "does": "Acompanha projetos de clientes, riscos, prazos e capacidade da equipe.",
       "tools": [
         "notion",
         "gmail"
@@ -350,9 +350,9 @@
       "id": "pco",
       "department": "delivery",
       "lead": false,
-      "name": "PROJECT CO-ORDINATOR",
-      "role": "Project Co-ordinator",
-      "does": "Keeps every project plan true — milestones, sign-offs, hours — and moves things before they become late.",
+      "name": "COORDENAÇÃO DE PROJETOS",
+      "role": "Coordenador de projetos",
+      "does": "Organiza planos, marcos, reuniões e aprovações dos projetos.",
       "tools": [
         "notion"
       ]
@@ -361,9 +361,9 @@
       "id": "qa",
       "department": "delivery",
       "lead": false,
-      "name": "QUALITY ASSURANCE CHECKER",
-      "role": "QA Checker",
-      "does": "Nothing reaches a client until it passes: links, spelling, brand rules, numbers, the flows a client will actually click.",
+      "name": "GARANTIA DE QUALIDADE",
+      "role": "Agente de qualidade",
+      "does": "Testa entregas e revisa relatórios, materiais e fluxos antes da publicação.",
       "tools": [
         "notion"
       ]
@@ -372,9 +372,9 @@
       "id": "crep",
       "department": "delivery",
       "lead": false,
-      "name": "CLIENT REPORTS",
-      "role": "Client Reports Agent",
-      "does": "Writes every client status and results report from the numbers in the Brain — same format, every month, on time.",
+      "name": "RELATÓRIOS DE CLIENTES",
+      "role": "Agente de relatórios de clientes",
+      "does": "Prepara relatórios de resultados e atualizações de status para clientes.",
       "tools": [
         "pandadoc",
         "notion"
@@ -384,9 +384,9 @@
       "id": "cass",
       "department": "delivery",
       "lead": false,
-      "name": "CLIENT ASSETS",
-      "role": "Client Assets Agent",
-      "does": "Every logo, file, export and final lives in the right place, named right, synced to the client portal.",
+      "name": "MATERIAIS DE CLIENTES",
+      "role": "Agente de materiais de clientes",
+      "does": "Organiza, exporta e publica arquivos e materiais dos clientes.",
       "tools": [
         "canva",
         "notion"
@@ -396,9 +396,9 @@
       "id": "dasst",
       "department": "delivery",
       "lead": false,
-      "name": "DESIGNER ASSISTANT",
-      "role": "Designer Assistant",
-      "does": "Takes the routine design work off the designer — templates, resizes, mockups, brand sheets — on brand, every time.",
+      "name": "ASSISTÊNCIA DE DESIGN",
+      "role": "Assistente de design",
+      "does": "Prepara modelos, banners, páginas e capas conforme a identidade visual.",
       "tools": [
         "canva"
       ]
@@ -407,9 +407,9 @@
       "id": "ona",
       "department": "delivery",
       "lead": false,
-      "name": "ONBOARDER",
-      "role": "Onboarding Concierge (High-Usage)",
-      "does": "Texts high-usage new users and gets them set up like a human would.",
+      "name": "INTEGRAÇÃO DE CLIENTES",
+      "role": "Agente de integração de clientes",
+      "does": "Prepara a entrada de novos clientes, acessos, reuniões iniciais e acompanhamento.",
       "tools": [
         "gmail",
         "notion"

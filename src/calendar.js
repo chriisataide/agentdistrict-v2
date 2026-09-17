@@ -12,9 +12,10 @@
 //        createRoutine({ dept, text, when, needsOk, model }) → Promise<{ ok, routine, error }>
 //        cancelTask(t) · rtAct(id, act) · openAgent(id, tab) · esc · isLive() · officeModel() · MODEL_KEYS · modelName · business()
 import { occurrences, describe, untilText, fromPicker, shortDate } from './when.js';
+import { ptBR } from './pt-br.js';
 
-const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; // the week starts on Monday (AU/NZ/UK)
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DOW = ptBR ? ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; // the week starts on Monday (AU/NZ/UK)
+const MONTHS = ptBR ? ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'] : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAY = 864e5;
 const pad = n => String(n).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -131,7 +132,7 @@ export function initCalendar(ctx) {
     const hint = () => {
       if (past) return;
       const k = P.dept.value; lastDept = k;
-      if (repeat) { const w = fromPicker(P.cad.value, P.time.value, dayKey); const first = occurrences(w, Date.now(), Date.now() + 400 * DAY, 1)[0]; P.hint.innerHTML = RT_DEPTS.includes(k) ? `Routine · <b>${esc(describe(w))}</b> · first run ${esc(first ? new Date(first).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + hm(first) : '—')}${isLive() ? ' · Claude names the agent' : ''}` : `<span class="amber">${esc(rtRefuse(k))}</span>`; P.go.disabled = !RT_DEPTS.includes(k); }
+      if (repeat) { const w = fromPicker(P.cad.value, P.time.value, dayKey); const first = occurrences(w, Date.now(), Date.now() + 400 * DAY, 1)[0]; P.hint.innerHTML = RT_DEPTS.includes(k) ? `Routine · <b>${esc(describe(w))}</b> · first run ${esc(first ? new Date(first).toLocaleDateString(ptBR ? 'pt-BR' : [], { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + hm(first) : '—')}${isLive() ? ' · Claude names the agent' : ''}` : `<span class="amber">${esc(rtRefuse(k))}</span>`; P.go.disabled = !RT_DEPTS.includes(k); }
       else { P.hint.innerHTML = `Task for <b>${DOW[(d.getDay() + 6) % 7]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)} · ${esc(P.time.value)}</b>${isLive() ? ' · Claude names the agent now, runs it then' : ''}`; P.go.disabled = false; }
     };
     P.rep.addEventListener('click', () => { repeat = !repeat; P.rep.classList.toggle('on', repeat); P.cad.hidden = !repeat; P.ok.hidden = !repeat; if (repeat) { const dow = (d.getDay() + 6) % 7; P.cad.value = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][dow]; } hint(); });
@@ -176,7 +177,7 @@ export function initCalendar(ctx) {
     E.pop.innerHTML = `<div class="cv-pop-h"><span class="lab">ROUTINE</span><span class="sp"></span><button class="cv-x" data-act="close">✕</button></div>
       <div class="cv-pop-t">${esc(r.title)}</div>
       <div class="cv-pop-m">${av(r.agent)} ${esc(a ? a.name : r.agent)} · ${esc(r.desc || describe(r.when))}${r.needsOk ? ' · waits for your OK' : ' · read-only'}${r.paused ? ' · <span class="cv-paused">PAUSED</span>' : ''}</div>
-      <div class="cv-pop-p">This run: ${esc(new Date(at).toLocaleString([], { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}${r.nextAt ? ` · next ${esc(untilText(r.nextAt))}` : ''}${r.lastAt ? ` · last ran ${esc(new Date(r.lastAt).toLocaleDateString([], { day: 'numeric', month: 'short' }))}` : ''}</div>
+      <div class="cv-pop-p">This run: ${esc(new Date(at).toLocaleString(ptBR ? 'pt-BR' : [], { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}${r.nextAt ? ` · next ${esc(untilText(r.nextAt))}` : ''}${r.lastAt ? ` · last ran ${esc(new Date(r.lastAt).toLocaleDateString(ptBR ? 'pt-BR' : [], { day: 'numeric', month: 'short' }))}` : ''}</div>
       <div class="cv-row"><button class="cv-btn" data-act="run">RUN NOW</button><button class="cv-btn" data-act="${r.paused ? 'resume' : 'pause'}">${r.paused ? 'RESUME' : 'PAUSE'}</button><button class="cv-btn" data-act="only">ONLY THIS</button><span class="sp"></span><button class="cv-btn warn" data-act="delete">DELETE</button></div>`;
     E.pop.hidden = false; place(E.pop, el);
     E.pop.querySelectorAll('.cv-btn').forEach(b => b.addEventListener('click', async () => {

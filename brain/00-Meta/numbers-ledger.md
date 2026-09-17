@@ -1,10 +1,15 @@
-# Numbers ledger
+# Registro de números
 
-| Metric | Value | As of |
+Único lugar de onde os agentes podem tirar um número. Enquanto uma linha estiver vazia, o agente deve
+escrever "(a confirmar)" em vez de estimar.
+
+| Indicador | Valor | Referência |
 |---|---|---|
-| Active clients | 14 | 1 Sep 2026 |
-| Monthly recurring revenue | $38,400 | 1 Sep 2026 |
-| Average project length | 23 days | Aug 2026 |
-| Proposal win rate | 41% | Q3 2026 |
+| Clientes ativos em monitoramento | (a preencher) | |
+| Receita recorrente mensal | (a preencher) | |
+| Obras em andamento | (a preencher) | |
+| Prazo médio de instalação | (a preencher) | |
+| SLA de atendimento contratado | (a preencher) | |
+| Taxa de conversão de propostas | (a preencher) | |
 
-Cited by [[MOC-Finance]], [[MOC-Sales]] and [[business-model]].
+Citado por [[MOC-Finance]], [[MOC-Sales]] e [[business-model]].

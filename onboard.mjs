@@ -8,17 +8,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const START = /^\s*(set\s?-?up|onboard(ing)?|interview\s+me|teach\s+(you|the\s+team)|let'?s\s+(set\s?up|start)|start\s+the\s+interview)\b/i;
-const CANCEL = /^\s*(cancel|stop|never\s?mind|forget\s+it)\s*[.!]?\s*$/i;
-const SKIP = /^\s*(skip|pass|next)\s*[.!]?\s*$/i;
-const DONE = /^\s*(done|finish|that'?s\s+(it|all|enough)|enough)\s*[.!]?\s*$/i;
+const START = /^\s*(set\s?-?up|onboard(ing)?|interview\s+me|teach\s+(you|the\s+team)|let'?s\s+(set\s?up|start)|start\s+the\s+interview|configurar|iniciar\s+(?:a\s+)?entrevista)(?:\b|$)/i;
+const CANCEL = /^\s*(cancel|stop|never\s?mind|forget\s+it|cancelar|parar)\s*[.!]?\s*$/i;
+const SKIP = /^\s*(skip|pass|next|pular|passar|próxima)\s*[.!]?\s*$/i;
+const DONE = /^\s*(done|finish|that'?s\s+(it|all|enough)|enough|concluir|terminar|pronto)\s*[.!]?\s*$/i;
 
 export const QUESTIONS = [
-  { k: 'what', q: d => `First: what does ${d} actually do here, in your words? What comes in, what goes out, and who is it for?` },
-  { k: 'job', q: d => `Walk me through the one ${d.toLowerCase()} job you do most often, start to finish. Where does it start, what do you check, what does the finished thing look like?` },
-  { k: 'good', q: () => `What does a good result look like? If you have one you were happy with, paste it in or describe it. If you have a template, describe its sections.` },
-  { k: 'never', q: () => `What must never happen? Red lines, things that always wait for you, anything that has gone wrong before and must not again.` },
-  { k: 'tools', q: () => `Which tools or systems do we use for this, and who are the people involved (clients, suppliers, staff, a bookkeeper)? Say "skip" if nothing comes to mind.` },
+  { k: 'what', q: d => `Para começar: o que ${d} faz aqui? O que chega, o que sai e para quem?` },
+  { k: 'job', q: d => `Descreva a tarefa mais comum de ${d.toLowerCase()}, do começo ao fim. Como começa, o que você confere e como fica o resultado?` },
+  { k: 'good', q: () => `Como é um bom resultado? Se tiver um exemplo, cole aqui ou descreva. Se houver um modelo, conte quais são as seções.` },
+  { k: 'never', q: () => `O que nunca deve acontecer? Inclua limites, ações que sempre precisam da sua aprovação e erros que não podem se repetir.` },
+  { k: 'tools', q: () => `Quais ferramentas ou sistemas vocês usam? Quem participa, como clientes, fornecedores e equipe? Diga "pular" se nada vier à mente.` },
 ];
 
 export const stateFile = dataDir => path.join(dataDir, 'interviews.json');
@@ -31,7 +31,7 @@ export function isSetUp(agents, skills, dept) {
   return agents.some(a => a.department === dept && (a.brief || skills.forAgent(a).some(s => s.source === 'brain')));
 }
 
-const progress = (i, d) => `**Question ${i + 1} of ${QUESTIONS.length}.** ${QUESTIONS[i].q(d)}`;
+const progress = (i, d) => `**Pergunta ${i + 1} de ${QUESTIONS.length}.** ${QUESTIONS[i].q(d)}`;
 
 /**
  * One chat turn. Returns { reply, wrote? } when the interview handles it, or null to let the normal chat answer.
@@ -43,23 +43,23 @@ export async function handle(text, ctx) {
   if (!cur) {
     if (!START.test(text)) return null;
     st[dept] = { step: 0, answers: [], startedAt: Date.now() }; save(dataDir, st);
-    return { reply: `Good. Five questions about how ${d} works here, one at a time. Answer in plain words, as much or as little as you like. "skip" skips one, "done" finishes early, "cancel" throws it all away. Nothing is written down until the end, and then I will tell you exactly what I wrote and where.\n\n${progress(0, d)}` };
+    return { reply: `Vamos começar. Farei cinco perguntas sobre como ${d} funciona aqui, uma por vez. Responda com suas palavras. "pular" passa à próxima, "concluir" encerra antes e "cancelar" descarta tudo. Só gravarei as instruções ao final e direi exatamente o que foi registrado.\n\n${progress(0, d)}` };
   }
-  if (CANCEL.test(text)) { delete st[dept]; save(dataDir, st); return { reply: `Cancelled. Nothing was written. Say "set up" whenever you want to start again.` }; }
+  if (CANCEL.test(text)) { delete st[dept]; save(dataDir, st); return { reply: `Cancelado. Nada foi gravado. Diga "configurar" quando quiser recomeçar.` }; }
   let finish = false;
-  if (DONE.test(text)) { if (!cur.answers.some(Boolean)) { delete st[dept]; save(dataDir, st); return { reply: `Nothing to write yet. Say "set up" when you have a few minutes.` }; } finish = true; }
+  if (DONE.test(text)) { if (!cur.answers.some(Boolean)) { delete st[dept]; save(dataDir, st); return { reply: `Ainda não há nada para registrar. Diga "configurar" quando puder responder às perguntas.` }; } finish = true; }
   else { cur.answers.push(SKIP.test(text) ? '' : String(text).trim()); cur.step = cur.answers.length; if (cur.step >= QUESTIONS.length) finish = true; }
-  if (!finish) { save(dataDir, st); return { reply: `Noted.\n\n${progress(cur.step, d)}` }; }
+  if (!finish) { save(dataDir, st); return { reply: `Anotado.\n\n${progress(cur.step, d)}` }; }
   delete st[dept]; save(dataDir, st); // whatever happens next, the interview is over
   const answers = QUESTIONS.map((q, i) => ({ k: q.k, q: q.q(d), a: cur.answers[i] || '' })).filter(x => x.a);
   const wrote = await writeUp(answers, ctx);
   const briefs = wrote.briefs.map(b => `${ctx.agents.find(a => a.id === b.id)?.name || b.id}`).join(', ');
-  const lines = [`Done. Here is what I wrote down for ${d}:`];
-  if (wrote.briefs.length) lines.push(`- A brief for ${briefs} in \`${wrote.agentsFile}\` — what each of them now knows about how you work.`);
-  if (wrote.skill) lines.push(`- A skill, **${wrote.skill.name}**${wrote.skill.description ? ' (' + wrote.skill.description + ')' : ''}, for ${wrote.skill.agents.map(id => ctx.agents.find(a => a.id === id)?.name || id).join(' and ')} in \`${wrote.skill.dir}\`${wrote.skill.template ? ' with a template beside it' : ''}.`);
-  if (!wrote.briefs.length && !wrote.skill) lines.push(`- Nothing usable came out of the answers, so nothing was written. Say "set up" to try again with more detail.`);
-  if (wrote.problems.length) lines.push(`- Skipped: ${wrote.problems.join('; ')}.`);
-  lines.push(`They apply from the next task. Try it: pick ${d} in the task bar and type "${wrote.tryTask || 'the job you described, for a real client'}". If the result is off, send it back with "revise: …" and I will remember the correction. Edit the files any time; they are yours.`);
+  const lines = [`Concluído. Registrei o seguinte para ${d}:`];
+  if (wrote.briefs.length) lines.push(`- Instruções para ${briefs} em \`${wrote.agentsFile}\` — agora esses agentes sabem como você trabalha.`);
+  if (wrote.skill) lines.push(`- Uma habilidade, **${wrote.skill.name}**${wrote.skill.description ? ' (' + wrote.skill.description + ')' : ''}, para ${wrote.skill.agents.map(id => ctx.agents.find(a => a.id === id)?.name || id).join(' e ')} em \`${wrote.skill.dir}\`${wrote.skill.template ? ', com um modelo no mesmo local' : ''}.`);
+  if (!wrote.briefs.length && !wrote.skill) lines.push(`- As respostas não trouxeram detalhes suficientes, então nada foi gravado. Diga "configurar" para tentar novamente.`);
+  if (wrote.problems.length) lines.push(`- Itens ignorados: ${wrote.problems.join('; ')}.`);
+  lines.push(`As instruções valem a partir da próxima tarefa. Para testar, escolha ${d} na barra e digite "${wrote.tryTask || 'a tarefa que você descreveu, para um cliente real'}". Se o resultado precisar de ajustes, responda "revisar: …". Você pode editar os arquivos a qualquer momento.`);
   return { reply: lines.join('\n'), wrote };
 }
 
@@ -67,7 +67,7 @@ export async function handle(text, ctx) {
 export async function writeUp(answers, ctx) {
   const { dept, deptName: d, lead, agents, connected = [], brainPath, ask, business = '' } = ctx;
   const roster = agents.map(a => `- ${a.id} · ${a.name}${a.lead ? ' (lead)' : ''} · ${a.role} · ${a.does}`).join('\n');
-  const system = `You turn an owner's interview answers into working instructions for the AI agents of the ${d} department of ${business || 'their business'}. Return ONLY a JSON object, no prose, no code fences.`;
+  const system = `You turn an owner's interview answers into working instructions for the AI agents of the ${d} department of ${business || 'their business'}. Return ONLY a JSON object, no prose, no code fences. Write user-facing fields in Brazilian Portuguese (pt-BR).`;
   const user = `Agents in ${d} (id · name · role · what they do):\n${roster}\n\nConnected tools: ${connected.join(', ') || 'none'}\n\nThe owner's answers:\n` +
     answers.map(x => `Q: ${x.q}\nA: ${x.a}`).join('\n\n') + '\n\n' +
     'Write:\n' +

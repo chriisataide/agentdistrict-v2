@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { MCP_LOGOS, MCP_BY_DEPT } from './mcplogos.js';
 import { applyAgentTools, profileShared } from './profile.js';
+import { ptBR } from './pt-br.js';
 
 // agent → tools they'd plausibly be driving (falls back to any connector in the dept's dock)
 export const AGENT_MCP = {
@@ -149,10 +150,8 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
   }
 
   // ── top-bar connector strip — the overview face of the connectors ──
-  // The overview is the demo's first frame: familiar brand logos ARE the header (they
-  // replaced the agent-count tags), and data visibly beams from each logo down into its
-  // department(s). The 3D docks beside the pods only exist zoomed IN (dockA fade below);
-  // at overview all connector traffic originates from the top bar instead.
+  // The top bar holds the connector logos. Their branches remain visible all the
+  // way to the pods; hovering a logo emphasises the routes it feeds.
   // SHARED connectors (gmail: five depts; notion: every dept, V3.1) sit at the far RIGHT end
   // of the strip and each runs its OWN loom (below) instead of joining any dept's cluster/fan
   const SHARED = LIVE ? connectors.shared : (profileShared() || { notion: '#151414', gmail: '#EA4335' });
@@ -162,19 +161,56 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
   const topconn = document.getElementById('topconn');
   const topImgs = {};
   if (topconn) {
-    topconn.innerHTML = `<span class="tc-lab"><span class="dot"></span>CONNECTED TO</span>`;
+    topconn.innerHTML = `<span class="tc-lab"><span class="dot"></span>CONNECTORS</span>`;
+    const tip = document.createElement('div');
+    tip.className = 'tc-tip';
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    const statusText = {
+      connected: ptBR ? 'Conectado' : 'Connected',
+      'needs-auth': ptBR ? 'Precisa de autenticação' : 'Needs authentication',
+      failed: ptBR ? 'Falha na conexão' : 'Connection failed',
+      pending: ptBR ? 'Aguardando conexão' : 'Connecting',
+      denied: ptBR ? 'Bloqueado para os agentes' : 'Blocked for agents',
+    };
+    const hideTip = () => { tip.hidden = true; };
+    const showTip = (img, k) => {
+      const name = LOGOS[k].name;
+      const state = statusText[STATUS[k] || 'connected'] || STATUS[k];
+      tip.replaceChildren();
+      const strong = document.createElement('strong');
+      strong.textContent = name;
+      const small = document.createElement('span');
+      small.textContent = state;
+      tip.append(strong, small);
+      tip.hidden = false;
+      const rect = img.getBoundingClientRect();
+      tip.style.left = Math.max(8, Math.min(innerWidth - tip.offsetWidth - 8, rect.left + rect.width / 2 - tip.offsetWidth / 2)) + 'px';
+      tip.style.top = rect.bottom + 9 + 'px';
+    };
+    topconn.addEventListener('scroll', hideTip, { passive: true });
     uniqKeys.forEach((k, i) => {
       const img = document.createElement('img');
       img.src = LOGOS[k].img;
-      img.alt = img.title = LOGOS[k].name;
+      img.alt = LOGOS[k].name;
+      const state = statusText[STATUS[k] || 'connected'] || STATUS[k];
+      img.title = `${LOGOS[k].name} — ${state}`;
       if (STATUS[k] && STATUS[k] !== 'connected') { // real list: a server that is there but not usable
         img.classList.add('off', 'st-' + STATUS[k]);
-        img.title = LOGOS[k].name + ' — ' + (k === 'chrome' && STATUS[k] === 'pending' ? 'Claude in Chrome extension not paired on this machine — run `claude --chrome` once, then restart the office' // V3.2 (16 Sep)
-          : ({ 'needs-auth': 'needs authentication (run claude, then /mcp)', failed: 'failed to connect', pending: 'connecting…', denied: 'connected · blocked for agents in office.config.json' }[STATUS[k]] || STATUS[k]));
       }
+      img.tabIndex = 0;
+      img.setAttribute('role', 'button');
+      img.setAttribute('aria-label', `${LOGOS[k].name}: ${state}`);
       img.style.setProperty('--d', (0.15 + i * 0.09) + 's'); // staggered pop-in on load
       img.addEventListener('animationend', (e) => { if (e.animationName === 'tcin') img.classList.add('in'); });
       img.addEventListener('click', () => fireConnector(k)); // presenter cue: click a logo → its dept(s) light up
+      img.addEventListener('mouseenter', () => { hoveredConnector = k; showTip(img, k); });
+      img.addEventListener('mouseleave', () => { if (hoveredConnector === k) hoveredConnector = null; hideTip(); });
+      img.addEventListener('focus', () => { hoveredConnector = k; showTip(img, k); });
+      img.addEventListener('blur', () => { if (hoveredConnector === k) hoveredConnector = null; hideTip(); });
+      img.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fireConnector(k); }
+      });
       topconn.appendChild(img);
       topImgs[k] = img;
     });
@@ -186,27 +222,37 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     }
   }
 
-  // cam + dockAcur are set every tick. At overview (dockAcur low) all connector traffic
-  // rides the PERMANENT WIRES below — nothing free-flies (free packets from the top bar
-  // read as "drones attacking the pods", AJ). Zoomed in, tile→desk beams as before.
+  // cam + dockAcur are set every tick. When the docks are hidden, packet traffic
+  // follows the visible network; no packets fly freely across the overview.
   // volleyAt schedules the boot/replay flourish: a pulse from every connector into its dept(s).
   let cam = null, dockAcur = 0;
   let volleyAt = performance.now() + uniqKeys.length * 90 + 900;
 
-  // ── permanent wiring loom (overview mode) ──
-  // One fixed conduit per dept: leaves the top bar under that dept's logo cluster, bows out
-  // toward the screen side and enters the pod at a floor-level corner port — cable tray, not
-  // flight path (entering from the sky is what made it look like an airstrike). The dash
-  // pattern crawls toward the pod for constant "data flowing" life; real events send a
-  // brighter pulse dot along the wire (reverse = desk→tool ack rides back up).
+  // A branching connector network: individual logos feed department junctions,
+  // then the coloured trunks and shared-tool routes reach sockets on each pod.
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.id = 'wires';
   hud.insertBefore(svg, hud.firstChild); // under every HUD overlay, above the 3D canvas
-  const PORT_CORNER = { marketing: [-1, 1], emails: [-1, -1], sales: [1, -1], ops: [1, -1], fin: [1, -1], delivery: [-1, -1] };
+  // Keep sockets along the clear outer side of each pod, away from the desk columns.
+  const SOCKET_SIDE = { marketing: 1, emails: 1, sales: -1, ops: -1, fin: -1, delivery: 1 };
+  const sharedByDept = Object.fromEntries(Object.keys(BY_DEPT).map(dept => [
+    dept, Object.keys(SHARED).filter(key => BY_DEPT[dept].includes(key)),
+  ]));
+  const hasOwnRoute = dept => BY_DEPT[dept].some(key => !SHARED[key]);
+  const socketCount = dept => sharedByDept[dept].length + Number(hasOwnRoute(dept));
+  const socket = (L, side, index, count) => {
+    const t = count > 1 ? index / (count - 1) : 0.5;
+    return [
+      L.pos[0] + side * (L.w / 2 - 0.9),
+      0.18,
+      L.pos[1] + (t - 0.5) * (L.d - 6),
+    ];
+  };
   const wires = {}, wirePulses = [];
+  let hoveredConnector = null, selectedConnector = null, selectedUntil = 0;
   Object.keys(BY_DEPT).forEach((dept, ji) => {
-    const L = LAYOUT[dept], [cx, cz] = PORT_CORNER[dept];
+    const L = LAYOUT[dept], side = SOCKET_SIDE[dept];
     const path = document.createElementNS(svgNS, 'path');
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke', DEPTS[dept].chip);
@@ -231,9 +277,9 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     dot.setAttribute('r', '2.6');
     dot.setAttribute('fill', DEPTS[dept].chip);
     svg.appendChild(dot);
+    const port = socket(L, side, 0, socketCount(dept));
     wires[dept] = { path, branch, jdot, dot, offset: 0, ji,
-      port: [L.pos[0] + cx * L.w / 2, 1.3, L.pos[1] + cz * L.d / 2],
-      fport: [L.pos[0] - L.w / 2, 1.3, L.pos[1] - L.d / 2] }; // V3.5 focus: the back corner
+      port, fport: port };
   });
   // SHARED wiring (gmail per AJ 3 Aug rev 2; notion joins 5 Sep): NOT part of any dept fan/loom —
   // from its far-right logo each shared connector drops to its own junction, then runs one fully
@@ -256,7 +302,7 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     svg.appendChild(jdot);
     const wiresOf = {};
     Object.keys(BY_DEPT).filter(d => BY_DEPT[d].includes(key)).forEach(dept => {
-      const L = LAYOUT[dept], [cx, cz] = PORT_CORNER[dept];
+      const L = LAYOUT[dept], side = SOCKET_SIDE[dept];
       const path = document.createElementNS(svgNS, 'path');
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', ink);
@@ -268,29 +314,34 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
       dot.setAttribute('r', '2.3');
       dot.setAttribute('fill', ink);
       svg.appendChild(dot);
-      // socket sits 4 (gmail) / 8 (notion) world units along the pod edge from the dept port
-      wiresOf[dept] = { path, dot,
-        port: [L.pos[0] + cx * L.w / 2 - cx * 4 * (si + 1), 1.3, L.pos[1] + cz * L.d / 2],
-        fport: [L.pos[0] - L.w / 2 + 4 * (si + 1), 1.3, L.pos[1] - L.d / 2] };
+      // number only this pod's connections, spaced along its clear side edge
+      const index = Number(hasOwnRoute(dept)) + sharedByDept[dept].indexOf(key);
+      const count = socketCount(dept);
+      const port = socket(L, side, index, count);
+      wiresOf[dept] = { path, dot, port, fport: port };
     });
     shared[key] = { ink, drop, jdot, wires: wiresOf, offset: 0, jy: 92 + si * 10 };
   });
 
-  // ── the MODEL layer (AJ, 5 Sep 2026): Claude + ChatGPT run the office headless ──
-  // Two logos on the right of the top bar, each wired straight into the Brain pod — the
-  // conduits pulse on their own so the thinking is visible even when nothing else fires.
-  const MODELS = { claude: '#D97757', chatgpt: '#151414' };
+  // ── the model layer: Claude and the owner's authenticated Codex CLI ──
+  // The model logos also keep visible routes into the Brain.
+  const MODELS = { claude: '#D97757', codex: '#151414' };
   const topmodels = document.getElementById('topmodels');
   const modelImgs = {};
   if (topmodels) {
     topmodels.innerHTML = `<span class="tc-lab"><span class="dot"></span>RUNS HEADLESS ON</span>`;
     Object.keys(MODELS).forEach((k, i) => {
       const img = document.createElement('img');
-      img.src = LOGOS[k].img;
-      img.alt = img.title = LOGOS[k].name + ' — headless';
+      img.src = k === 'codex' ? LOGOS.chatgpt.img : LOGOS[k].img;
+      img.alt = img.title = k === 'codex' ? 'Codex · OpenAI' : 'Claude';
       img.style.setProperty('--d', (0.9 + i * 0.12) + 's');
+      img.tabIndex = 0;
+      img.setAttribute('role', 'button');
       img.addEventListener('animationend', (e) => { if (e.animationName === 'tcin') img.classList.add('in'); });
       img.addEventListener('click', () => modelPulse(k, true));
+      img.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); modelPulse(k, true); }
+      });
       topmodels.appendChild(img);
       modelImgs[k] = img;
     });
@@ -308,16 +359,25 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     dot.setAttribute('r', '2.6');
     dot.setAttribute('fill', MODELS[k]);
     svg.appendChild(dot);
-    // sockets on the Brain pod's back edge, side by side
-    mwires[k] = { path, dot, port: [LAYOUT.brain.w / 2 - 2 - i * 4, 1.3, -LAYOUT.brain.d / 2] };
+    mwires[k] = { path, dot, offset: 0,
+      port: [LAYOUT.brain.pos[0] + 4 - i * 4, 0.18, LAYOUT.brain.pos[1] - LAYOUT.brain.d / 2 + 2.4] };
   });
   let nextModelPulse = performance.now() + 2600;
-  // V3.6 (A3 · B1 · C1): the plan's own gauge beside the Claude logo — session and week, as Claude Code shows them.
-  // Live means Claude only: the ChatGPT tile and its wire are demo theatre and go the first time usage arrives.
+  function setProviders(providers) {
+    for (const k of Object.keys(MODELS)) {
+      const img = modelImgs[k];
+      if (!img) continue;
+      const state = providers?.[k];
+      img.classList.toggle('off', !state?.connected);
+      img.title = k === 'codex'
+        ? state?.connected ? `Codex · OpenAI — ${state.auth === 'chatgpt' ? 'conectado com ChatGPT' : 'conectado com chave de API'}` : 'Codex · OpenAI — desconectado; execute codex login'
+        : state?.connected ? 'Claude — conectado' : 'Claude — desconectado';
+    }
+  }
+  // The usage gauge belongs to Claude. Codex has its own authenticated model tile.
   let usageEl = null;
   function setUsage(u) {
     if (!topmodels) return;
-    if (modelImgs.chatgpt) { modelImgs.chatgpt.remove(); delete modelImgs.chatgpt; const w = mwires.chatgpt; if (w) { w.path.setAttribute('d', ''); w.dot.setAttribute('opacity', 0); delete mwires.chatgpt; } }
     if (!usageEl) { usageEl = document.createElement('span'); usageEl.className = 'tm-usage'; topmodels.appendChild(usageEl); }
     const when = ts => ts ? new Date(ts).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
     const bar = (lab, x) => { if (!x) return ''; const cls = x.percent >= 90 ? 'c' : x.percent >= 75 ? 'w' : ''; return `<span>${lab}</span><span class="ub"><i class="${cls}" style="width:${x.percent}%"></i></span><b>${x.percent >= 100 ? 'LIMIT' : x.percent + '%'}</b>`; };
@@ -333,7 +393,7 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     } else { usageEl.className = 'tm-usage off'; usageEl.innerHTML = '<span>USAGE UNAVAILABLE</span>'; usageEl.title = (u && u.reason) || ''; }
   }
   function modelPulse(k, strong = false) {
-    if (!modelImgs[k]) return; // a tile that has gone (ChatGPT in a live office) has no wire to pulse
+    if (!modelImgs[k] || modelImgs[k].classList.contains('off')) return;
     wirePulse('brain', { model: k, scale: strong ? 1.2 : 0.9 });
     wirePulse('brain', { model: k, reverse: true, delay: 900, scale: strong ? 1 : 0.75 });
     if (modelImgs[k] && strong) { modelImgs[k].classList.remove('tpulse'); void modelImgs[k].offsetWidth; modelImgs[k].classList.add('tpulse'); }
@@ -350,8 +410,7 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
   }
   let stripDept = undefined;
   function tickWires(now, dt, wireA, focused) {
-    // V3.4 (AJ): inside a department the header strip shows THAT dept's connectors (the others
-    // hide); the wiring loom still fades out. At overview every logo shows and the loom is back.
+    // Inside a department the header strip shows only its connectors.
     const f = (focused && focused !== 'brain') ? focused : null;
     if (topconn) {
       if (f) {
@@ -368,7 +427,7 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
         if (stripDept !== null) {
           for (const img of Object.values(topImgs)) img.style.display = '';
           topconn.classList.remove('focus');
-          topconn.querySelector('.tc-lab').innerHTML = `<span class="dot"></span>CONNECTED TO`;
+          topconn.querySelector('.tc-lab').innerHTML = `<span class="dot"></span>CONNECTORS`;
         }
       }
       stripDept = f;
@@ -379,6 +438,7 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     }
     if (wireA < 0.02) { svg.style.display = 'none'; return; }
     svg.style.display = 'block';
+    const activeKey = hoveredConnector || (now < selectedUntil ? selectedConnector : null);
     const hideWire = (w) => { w.path.setAttribute('d', ''); w.branch && w.branch.setAttribute('d', ''); w.jdot && w.jdot.setAttribute('opacity', 0); w.dot.setAttribute('opacity', 0); };
     for (const [dept, w] of Object.entries(wires)) {
       if (f && dept !== f) { hideWire(w); continue; } // focus: only this department's loom
@@ -395,72 +455,70 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
         continue;
       }
       const jx = xs.reduce((a, b) => a + b, 0) / xs.length;
-      const jy = f ? 100 : 104 + w.ji * 12, sy = 50;
+      const jy = f ? 100 : 96 + w.ji * 7, sy = 52;
       w.branch.setAttribute('d', xs.map(x =>
         `M ${x} ${sy} C ${x} ${sy + (jy - sy) * 0.5}, ${jx} ${jy - (jy - sy) * 0.4}, ${jx} ${jy}`).join(' '));
       const pt = f ? w.fport : w.port;
       v3.set(pt[0], pt[1], pt[2]).project(cam);
       const ex = (v3.x * 0.5 + 0.5) * innerWidth, ey = (-v3.y * 0.5 + 0.5) * innerHeight;
-      const side = ex < innerWidth * 0.5 ? -1 : 1;
-      const bow = f ? 30 : Math.min(170, 40 + Math.abs(ex - jx) * 0.25);
-      w.path.setAttribute('d', `M ${jx} ${jy} C ${jx + side * bow * 0.35} ${jy + (ey - jy) * 0.4}, ` +
-        `${ex + side * bow} ${ey - (ey - jy) * 0.45}, ${ex} ${ey}`);
+      const bend = Math.min(150, Math.max(36, (ey - jy) * 0.32));
+      w.path.setAttribute('d', `M ${jx} ${jy} C ${jx} ${jy + bend}, ${ex} ${ey - bend}, ${ex} ${ey}`);
+      const highlighted = activeKey && !SHARED[activeKey] && BY_DEPT[dept].includes(activeKey);
       w.offset -= dt * (f ? 13 : 6); // slow crawl toward the pod (slower still at rest)
       w.path.setAttribute('stroke-dashoffset', w.offset);
-      w.path.setAttribute('stroke-opacity', (f ? 0.8 : 0.26) * wireA); // V3.5: at rest the loom is half as loud (AJ)
-      w.path.setAttribute('stroke-width', f ? 2.2 : 1.6); // heavier in focus so the camera reads it
+      w.path.setAttribute('stroke-opacity', (f ? 0.72 : highlighted ? 0.68 : 0.32) * wireA);
+      w.path.setAttribute('stroke-width', f ? 2 : highlighted ? 1.9 : 1.4);
       w.branch.setAttribute('stroke-dashoffset', w.offset);
-      w.branch.setAttribute('stroke-opacity', (f ? 0.85 : 0.3) * wireA);
-      w.branch.setAttribute('stroke-width', f ? 1.8 : 1.3);
+      w.branch.setAttribute('stroke-opacity', (f ? 0.7 : highlighted ? 0.62 : 0.27) * wireA);
+      w.branch.setAttribute('stroke-width', f ? 1.6 : 1.1);
       w.jdot.setAttribute('cx', jx); w.jdot.setAttribute('cy', jy);
-      w.jdot.setAttribute('opacity', (f ? 0.75 : 0.38) * wireA);
+      w.jdot.setAttribute('opacity', (f ? 0.8 : highlighted ? 0.75 : 0.42) * wireA);
       w.dot.setAttribute('cx', ex); w.dot.setAttribute('cy', ey);
-      w.dot.setAttribute('opacity', (f ? 0.85 : 0.45) * wireA);
+      w.dot.setAttribute('opacity', (f ? 0.85 : highlighted ? 0.8 : 0.62) * wireA);
     }
     // shared wiring: each shared logo drops to its own junction, then an INDEPENDENT
     // trunk-style conduit per using dept, ending at that connector's own socket on the pod
     for (const [key, sh] of Object.entries(shared)) {
       if (!topImgs[key]) continue;
       const gr = topImgs[key].getBoundingClientRect();
-      const gx = (gr.left + gr.right) / 2, gsy = 50, gjy = sh.jy;
+      const gx = (gr.left + gr.right) / 2, gsy = 52, gjy = sh.jy;
       sh.drop.setAttribute('d', `M ${gx} ${gsy} L ${gx} ${gjy}`);
       sh.offset -= dt * (f ? 13 : 6);
       sh.drop.setAttribute('stroke-dashoffset', sh.offset);
-      sh.drop.setAttribute('stroke-opacity', (f ? 0.6 : 0.3) * wireA);
+      sh.drop.setAttribute('stroke-opacity', (f ? 0.62 : activeKey === key ? 0.65 : 0.3) * wireA);
       sh.jdot.setAttribute('cx', gx); sh.jdot.setAttribute('cy', gjy);
-      sh.jdot.setAttribute('opacity', (f ? 0.75 : 0.38) * wireA);
+      sh.jdot.setAttribute('opacity', (f ? 0.75 : activeKey === key ? 0.72 : 0.4) * wireA);
       for (const [dept, g] of Object.entries(sh.wires)) {
         if (f && dept !== f) { hideWire(g); continue; }
         const gp = f ? g.fport : g.port;
         v3.set(gp[0], gp[1], gp[2]).project(cam);
         const ex = (v3.x * 0.5 + 0.5) * innerWidth, ey = (-v3.y * 0.5 + 0.5) * innerHeight;
-        const side = ex < innerWidth * 0.5 ? -1 : 1;
-        const bow = Math.min(170, 40 + Math.abs(ex - gx) * 0.25);
-        g.path.setAttribute('d', `M ${gx} ${gjy} C ${gx + side * bow * 0.35} ${gjy + (ey - gjy) * 0.4}, ` +
-          `${ex + side * bow} ${ey - (ey - gjy) * 0.45}, ${ex} ${ey}`);
+        const bend = Math.min(150, Math.max(36, (ey - gjy) * 0.32));
+        g.path.setAttribute('d', `M ${gx} ${gjy} C ${gx} ${gjy + bend}, ${ex} ${ey - bend}, ${ex} ${ey}`);
         g.path.setAttribute('stroke-dashoffset', sh.offset);
-        g.path.setAttribute('stroke-opacity', (f ? 0.75 : key === 'notion' ? 0.16 : 0.26) * wireA);
-        g.path.setAttribute('stroke-width', f ? 2 : 1.4);
+        g.path.setAttribute('stroke-opacity', (f ? 0.68 : activeKey === key ? 0.66 : 0.23) * wireA);
+        g.path.setAttribute('stroke-width', f ? 1.9 : activeKey === key ? 1.7 : 1.15);
         g.dot.setAttribute('cx', ex); g.dot.setAttribute('cy', ey);
-        g.dot.setAttribute('opacity', (f ? 0.85 : 0.45) * wireA);
+        g.dot.setAttribute('opacity', (f ? 0.85 : activeKey === key ? 0.8 : 0.62) * wireA);
       }
     }
-    // model wiring: Claude + ChatGPT logos → the Brain's back edge; they pulse on their own
+    // model wiring: Claude + Codex logos → the Brain's back edge; they pulse on their own
     for (const [k, m] of Object.entries(mwires)) {
-      if (!modelImgs[k]) continue;
+      if (!modelImgs[k] || modelImgs[k].classList.contains('off')) { hideWire(m); continue; }
       const r = modelImgs[k].getBoundingClientRect();
-      const mx = (r.left + r.right) / 2, msy = 50;
+      const mx = (r.left + r.right) / 2, msy = 52;
       v3.set(m.port[0], m.port[1], m.port[2]).project(cam);
       const ex = (v3.x * 0.5 + 0.5) * innerWidth, ey = (-v3.y * 0.5 + 0.5) * innerHeight;
-      m.path.setAttribute('d', `M ${mx} ${msy} C ${mx} ${msy + (ey - msy) * 0.45}, ${ex + 40} ${ey - (ey - msy) * 0.35}, ${ex} ${ey}`);
+      const bend = Math.min(140, Math.max(36, (ey - msy) * 0.33));
+      m.path.setAttribute('d', `M ${mx} ${msy} C ${mx} ${msy + bend}, ${ex} ${ey - bend}, ${ex} ${ey}`);
       m.offset = (m.offset || 0) - dt * (f ? 13 : 6);
       m.path.setAttribute('stroke-dashoffset', m.offset);
-      m.path.setAttribute('stroke-opacity', (f ? 0.45 : 0.22) * wireA);
+      m.path.setAttribute('stroke-opacity', (f ? 0.44 : 0.24) * wireA);
       m.dot.setAttribute('cx', ex); m.dot.setAttribute('cy', ey);
-      m.dot.setAttribute('opacity', (f ? 0.85 : 0.45) * wireA);
+      m.dot.setAttribute('opacity', (f ? 0.8 : 0.58) * wireA);
     }
     if (now > nextModelPulse) {
-      modelPulse(Math.random() < 0.6 ? 'claude' : 'chatgpt');
+      modelPulse(Math.random() < 0.6 ? 'claude' : 'codex');
       nextModelPulse = now + 2400 + Math.random() * 3200;
     }
     for (let i = wirePulses.length - 1; i >= 0; i--) {
@@ -468,9 +526,9 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
       const k = (now - p.t0) / p.dur;
       if (k < 0) continue;
       if (k >= 1) { p.el.remove(); wirePulses.splice(i, 1); continue; }
-      const path = p.model ? mwires[p.model].path
-        : (p.shared && shared[p.shared].wires[p.dept]) ? shared[p.shared].wires[p.dept].path : wires[p.dept].path;
-      if (!path.getAttribute('d')) { p.el.remove(); wirePulses.splice(i, 1); continue; } // wire hidden (other dept in focus)
+      const path = p.model ? mwires[p.model]?.path
+        : (p.shared && shared[p.shared]?.wires[p.dept]) ? shared[p.shared].wires[p.dept].path : wires[p.dept]?.path;
+      if (!path?.getAttribute('d')) { p.el.remove(); wirePulses.splice(i, 1); continue; } // wire hidden (other dept in focus)
       const e = k * k * (3 - 2 * k);
       const pt = path.getPointAtLength((p.reverse ? 1 - e : e) * path.getTotalLength());
       p.el.setAttribute('cx', pt.x); p.el.setAttribute('cy', pt.y);
@@ -480,6 +538,8 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
 
   function fireConnector(key) {
     const now = performance.now();
+    selectedConnector = key;
+    selectedUntil = now + 2200;
     for (const [dept, keys] of Object.entries(BY_DEPT)) {
       if (!keys.includes(key)) continue;
       const item = byDeptKey[dept + ':' + key];
@@ -740,17 +800,21 @@ export function initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors = null })
     if (tipHideAt && now > tipHideAt) { tip.classList.remove('on'); tipHideAt = 0; }
   }
 
-  // dark mode: the two ink-coloured looms (Notion, ChatGPT) would vanish on a dark ground
+  // dark mode: the ink-coloured looms (Notion, Codex) would vanish on a dark ground
   const inkBlack = new Set(Object.keys(SHARED).filter(k => SHARED[k] === '#151414'));
   function setDark(on) {
     const ink = on ? '#E8E6DF' : '#151414';
-    MODELS.chatgpt = ink;
+    MODELS.codex = ink;
     for (const k of inkBlack) {
       SHARED[k] = ink;
       const sh = shared[k];
-      if (sh) { sh.ink = ink; sh.drop.setAttribute('stroke', ink); sh.jdot.setAttribute('fill', ink); for (const g of Object.values(sh.wires)) { g.path.setAttribute('stroke', ink); g.dot.setAttribute('fill', ink); } }
+      if (sh) {
+        sh.drop.setAttribute('stroke', ink);
+        sh.jdot.setAttribute('fill', ink);
+        for (const g of Object.values(sh.wires)) { g.path.setAttribute('stroke', ink); g.dot.setAttribute('fill', ink); }
+      }
     }
-    if (mwires.chatgpt) { mwires.chatgpt.path.setAttribute('stroke', ink); mwires.chatgpt.dot.setAttribute('fill', ink); }
+    if (mwires.codex) { mwires.codex.path.setAttribute('stroke', ink); mwires.codex.dot.setAttribute('fill', ink); }
   }
-  return { tick, sprites: [], onAgentEvent, onToolsUsed, showTip, startReveal, setDark, setUsage, live: LIVE, keys: uniqKeys }; // sprites: none clickable — docks retired
+  return { tick, sprites: [], onAgentEvent, onToolsUsed, showTip, startReveal, setDark, setUsage, setProviders, live: LIVE, keys: uniqKeys }; // sprites: none clickable — docks retired
 }

@@ -13,6 +13,7 @@
 //     segments: [..], world: { customers, suppliers, competitors, cities },
 //     strip: [{ key, name, depts:[..] }], logos: { key: { name, img } }, shared: { key: ink },
 //     graph: { notes, nodes, links, floor } }
+import { ptBR } from './pt-br.js';
 export const PROFILE = (typeof window !== 'undefined' && window.PROFILE && window.PROFILE.pods) ? window.PROFILE : null;
 
 const DEPTS6 = ['emails', 'sales', 'marketing', 'ops', 'fin', 'delivery'];
@@ -142,7 +143,7 @@ export const profileShared = () => (PROFILE && PROFILE.shared) || null;
 export function profileRows() { // dept → [[label, () => value]] for the pod cards
   if (!PROFILE || !PROFILE.kpis) return null;
   const rows = {};
-  for (const k of DEPTS6) rows[k] = (PROFILE.kpis[k] || []).slice(0, 3).map(x => [x.label, () => typeof x.val === 'number' ? Math.round(x.val).toLocaleString('en-NZ') : String(x.val)]);
+  for (const k of DEPTS6) rows[k] = (PROFILE.kpis[k] || []).slice(0, 3).map(x => [x.label, () => typeof x.val === 'number' ? Math.round(x.val).toLocaleString(ptBR ? 'pt-BR' : 'en-NZ') : String(x.val)]);
   return rows;
 }
 export function profileTickKpi(dept, roll) { // the live feel: the first number in a pod ticks up as its agents work
@@ -172,8 +173,8 @@ export function applyTopbar() {
   if (!PROFILE) return;
   const brand = document.querySelector('#topbar .brand');
   if (brand && PROFILE.company) {
-    const co = document.createElement('span'); co.className = 'co'; co.textContent = PROFILE.company; brand.appendChild(co);
+    const co = document.createElement('span'); co.className = 'co'; co.textContent = PROFILE.company; brand.insertAdjacentElement('afterend', co);
   }
-  document.title = `${PROFILE.company || PROFILE.industry || 'Agents Office'} — Agents Office`;
+  document.title = 'Agent District';
 }
 // (13 Sep 2026, AJ: the ANZ / NORTH AMERICA pill is gone — each region is simply its own file.)

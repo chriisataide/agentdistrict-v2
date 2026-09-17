@@ -16,10 +16,11 @@
 // agent does anything outbound. Switch it off for read-only routines.
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, nextRun, valid } from './src/when.js';
+import { describe as describeSchedule, nextRun, valid } from './src/when.js';
+const describe = when => describeSchedule(when, 'pt-BR');
 
 export const ALLOWED = ['emails', 'fin', 'sales'];
-export const NAMES = { emails: 'Emails', fin: 'Accounting', sales: 'Sales', marketing: 'Marketing', ops: 'Operations', delivery: 'Delivery' };
+export const NAMES = { emails: 'E-mails', fin: 'Contabilidade', sales: 'Vendas', marketing: 'Marketing', ops: 'Operações', delivery: 'Entregas' };
 export const file = brainPath => path.join(brainPath, 'Agents Office', 'routines.json');
 export const stateFile = dataDir => path.join(dataDir, 'routines.json');
 export const LATE_AFTER = 90 * 1000; // a run more than 90 s past its minute was missed (asleep, or the office was off) → runs once, marked LATE
@@ -29,7 +30,7 @@ const readJSON = (p, fallback) => { try { return JSON.parse(fs.readFileSync(p, '
 
 /** "Routines come to Marketing in a later release. This release: Emails, Accounting, Sales." */
 export function refusal(dept) {
-  return `Routines come to ${NAMES[dept] || dept} in a later release. This release: Emails, Accounting and Sales.`;
+  return `As rotinas para ${NAMES[dept] || dept} estarão disponíveis em uma próxima versão. Nesta versão, funcionam em E-mails, Contabilidade e Vendas.`;
 }
 
 /** Normalise + check one routine against the roster. Returns { routine, problems }. Fixed fields are kept as given; bad ones are named. */
@@ -39,16 +40,16 @@ export function validate(r, agents, existing = []) {
   const a = agents.find(x => x.id === r.agent);
   out.dept = r.dept || (a && a.department);
   if (!ALLOWED.includes(out.dept)) problems.push(`${r.id || r.title || 'routine'}: ${refusal(out.dept)}`);
-  if (!a) problems.push(`${r.id || r.title || 'routine'}: no agent called "${r.agent}"`);
-  else if (a.department !== out.dept) problems.push(`${r.id || r.title || 'routine'}: ${a.name} is in ${NAMES[a.department] || a.department}, not ${NAMES[out.dept] || out.dept}`);
+  if (!a) problems.push(`${r.id || r.title || 'rotina'}: não existe agente chamado "${r.agent}"`);
+  else if (a.department !== out.dept) problems.push(`${r.id || r.title || 'rotina'}: ${a.name} pertence a ${NAMES[a.department] || a.department}, não a ${NAMES[out.dept] || out.dept}`);
   out.agent = r.agent;
   out.text = String(r.text || '').trim();
-  if (!out.text) problems.push(`${r.id || 'routine'}: no task text`);
+  if (!out.text) problems.push(`${r.id || 'rotina'}: falta a descrição da tarefa`);
   out.title = String(r.title || out.text).trim().slice(0, 90);
   out.id = String(r.id || slug(out.title) || 'routine');
-  if (existing.some(x => x.id === out.id)) problems.push(`${out.id}: two routines share this id`);
+  if (existing.some(x => x.id === out.id)) problems.push(`${out.id}: duas rotinas usam o mesmo identificador`);
   out.when = r.when;
-  if (!valid(out.when)) problems.push(`${out.id}: the schedule is not complete (${JSON.stringify(r.when || null)}) — see src/when.js`);
+  if (!valid(out.when)) problems.push(`${out.id}: o agendamento está incompleto (${JSON.stringify(r.when || null)}) — veja src/when.js`);
   out.needsOk = r.needsOk !== false;
   out.paused = r.paused === true;
   if (Array.isArray(r.plan)) out.plan = r.plan.slice(0, 4).map(String);
@@ -56,7 +57,7 @@ export function validate(r, agents, existing = []) {
     out.team = true; const lead = agents.find(x => x.department === out.dept && x.lead);
     if (lead && a && !a.lead) out.agent = lead.id; // moved to the lead quietly: a problem would drop the routine
   }
-  if (r.model !== undefined && r.model !== '' && r.model !== null) { const m = String(r.model).toLowerCase().trim(); if (['sonnet', 'opus', 'fable'].includes(m)) out.model = m; else problems.push(`${out.id}: model must be sonnet, opus or fable (got "${r.model}")`); }
+  if (r.model !== undefined && r.model !== '' && r.model !== null) { const m = String(r.model).toLowerCase().trim(); if (['sonnet', 'opus', 'fable', 'codex'].includes(m)) out.model = m; else problems.push(`${out.id}: model must be sonnet, opus, fable or codex (got "${r.model}")`); }
   if (r.effort !== undefined && r.effort !== '' && r.effort !== null) { const e = String(r.effort).toLowerCase().trim(); if (['low', 'medium', 'high', 'xhigh', 'max'].includes(e)) out.effort = e; else problems.push(`${out.id}: effort must be low, medium, high, xhigh or max (got "${r.effort}")`); }
   return { routine: out, problems };
 }
@@ -121,24 +122,24 @@ export function advance(st, r, now = Date.now(), taskId = null, late = false) {
 /** Guess whether a task text is outbound (needs the owner's OK) when Claude has not said. */
 export function guessNeedsOk(text) {
   const t = String(text).toLowerCase();
-  const outbound = /\b(send|sends|email them|reply to|replies|respond|chase|nudge|remind|reminder|post|publish|pay|invoice them|book|schedule a|cancel|update the crm|delete|forward|message)\b/.test(t);
-  const readOnly = /\b(list|summari[sz]e|triage|tell me|what|report|match|reconcile|qualify|review|check|read|find|flag|count|draft)\b/.test(t);
+  const outbound = /\b(send|sends|email them|reply to|replies|respond|chase|nudge|remind|reminder|post|publish|pay|invoice them|book|schedule a|cancel|update the crm|delete|forward|message|enviar|envie|responder|responda|publicar|publique|pagar|pague|cobrar|cobre|agendar|cancele|cancelar|excluir|apagar|encaminhar|atualizar)\b/.test(t);
+  const readOnly = /\b(list|summari[sz]e|triage|tell me|what|report|match|reconcile|qualify|review|check|read|find|flag|count|draft|listar|resumir|revisar|verificar|ler|encontrar|sinalizar|contar|redigir|conferir|analisar|conciliar|qualificar)\b/.test(t);
   if (/\bdraft\b/.test(t) && !/\bsend\b/.test(t)) return true; // a draft exists to be sent — the send waits for the tick
   return outbound || !readOnly;
 }
 
 /** The one-line question the agent asks when a routine's draft is waiting. */
 export function askLine(task) {
-  return `"${task.title}" is done and waiting for your OK — approve to send it, reject to tell me what to change.`;
+  return `"${task.title}" está pronta e aguarda sua aprovação. Diga "aprovar" para enviar ou "rejeitar" para pedir ajustes.`;
 }
 
 /** The "routines" list a lead reads back in chat. */
 export function listText(list, dept, agents) {
   const mine = list.filter(r => r.dept === dept);
-  if (!mine.length) return `Nothing on the ${NAMES[dept]} timetable yet. Give me one with a time in it — "every weekday at 8am, …" — and I will put it on.`;
+  if (!mine.length) return `Ainda não há rotinas em ${NAMES[dept]}. Descreva uma tarefa com horário, por exemplo: "todo dia útil às 8h, …".`;
   const name = id => agents.find(a => a.id === id)?.name || id;
-  return `${NAMES[dept]} routines:\n` + mine.map(r => `• ${r.title} — ${r.desc} · ${name(r.agent)}${r.paused ? ' · PAUSED' : ''}${r.needsOk ? ' · waits for your OK' : ' · read-only'}`).join('\n') +
-    `\n\nSay "pause …", "resume …", "run … now" or "delete …" with a few words from the name.`;
+  return `Rotinas de ${NAMES[dept]}:\n` + mine.map(r => `• ${r.title} — ${r.desc} · ${name(r.agent)}${r.paused ? ' · PAUSADA' : ''}${r.needsOk ? ' · aguarda sua aprovação' : ' · somente leitura'}`).join('\n') +
+    `\n\nDiga "pausar …", "retomar …", "executar …" ou "excluir …" com algumas palavras do nome.`;
 }
 
 /** Match "pause the monday one" / "run inbox triage now" to a routine in the department by word overlap. */

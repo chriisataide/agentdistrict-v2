@@ -1,6 +1,9 @@
 // Agents Office v2 — Three.js isometric office with zoom-driven LOD
 // Far: clean pods + agent counts (Image 1 read). Near: diorama with 3D people + holo screens (Image 2 read).
 import * as THREE from 'three';
+import { localizeUI, ptBR } from './pt-br.js';
+import defaultRoster from '../office.agents.json';
+import { POOL_PT } from './demo-pt.js';
 import { TOKENS, DEPTS, DEPT_KEYS, AGENTS, LAYOUT, WORKLINES, APPROVAL_ASKS, APPROVAL_BY_AGENT } from './data.js';
 import { hasScreens, makeScreen } from './screens.js'; // live screens (14 Sep): no-op without window.SCREENS
 import { V1, FILE_GEN, STATS, KPIS, P, rnd, ri, person, money } from './v1data.js';
@@ -14,7 +17,32 @@ import { loadConnectors } from './connectors.js';
 import { initTasks } from './tasks.js';
 import { initBrain } from './brain.js';
 import { initHero, HERO } from './hero.js';
-if (HERO) document.body.classList.add('hero'); // the website hero: no Sahni.ai mark or licence line on top of the page that already carries them // sahni.ai/custom hero mode (16 Sep 2026): opt-in via window.HERO, no-op otherwise
+if (ptBR && !PROFILE) {
+  for (const a of defaultRoster.agents) {
+    const seat = AGENTS.find(x => x.id === a.id), demo = V1.find(x => x.id === a.id);
+    if (seat) seat.name = a.name;
+    if (demo) {
+      demo.name = a.name; demo.role = a.role; demo.tagline = a.does;
+      demo.greeting = `${a.does} Você pode me pedir uma tarefa ou perguntar o que estou fazendo.`;
+      demo.chips = ['O que está fazendo?', 'Como pode me ajudar?', 'Quais ferramentas você usa?'];
+      if (POOL_PT[a.id]) demo.tasks = POOL_PT[a.id];
+      demo.ev = demo.tasks.slice(0, 3).map((task, i) => ({
+        i: ['▸', '✓', '📚'][i],
+        t: () => `${['Trabalhando em', 'Concluído', 'Consultando notas para'][i]}: ${task.replace('{co}', rnd(P.co)).replace('{n}', ri(6, 40)).replace('{segment}', 'clientes')}`,
+        p: 2, brain: i === 2,
+      }));
+      demo.stats = [['Concluídas nesta semana', () => ri(8, 30)], ['Em andamento', () => ri(1, 3)], ['Aguardando você', () => ri(0, 2)], ['Tempo médio', () => ri(9, 49) + ' min']];
+      demo.chartLbl = 'Tarefas concluídas nos últimos 7 dias';
+      demo.chat = [
+        { k: ['fazendo', 'trabalhando', 'tarefas', 'mesa'], r: [`Agora estou cuidando de ${demo.tasks[0].replace('{co}', rnd(P.co))}.`] },
+        { k: ['aguardando', 'aprovação', 'aprovar'], r: ['Veja no painel à direita o que precisa da sua aprovação.'] },
+        { k: ['ferramenta', 'sistema', 'conector'], r: ['Uso as ferramentas conectadas e as notas do Cérebro. Antes de enviar ou alterar algo fora do escritório, peço sua aprovação.'] },
+      ];
+      demo.fallback = ['Você pode me pedir uma tarefa pela barra à direita ou perguntar o que está em andamento.', 'Consulte o painel para acompanhar as tarefas.'];
+    }
+  }
+}
+if (HERO) document.body.classList.add('hero'); // the icodev.com.br hero hides the app copyright line
 let tasks = null; // V3 task boards — initialised after the rail constants exist
 
 /* ---------- renderer / scene / camera ---------- */
@@ -38,7 +66,8 @@ const CAM_DIST = 220;
 const OVERVIEW = { base: [-9, 0, -9], zoom: 0.8 }; // (-9,-9) shifts the scene straight DOWN the screen, no sideways drift
 const SR_ = new THREE.Vector3(1, 0, -1).normalize();
 function overviewPos() {
-  const pw = (tasks ? tasks.panelWidth() : 400) + 30;
+  const panelW = tasks ? tasks.panelWidth() : 400;
+  const pw = panelW ? panelW + 30 : 0;
   const ppw = OVERVIEW.zoom * innerHeight / (2 * FR);
   const sh = (pw / 2) / ppw;
   return [OVERVIEW.base[0] + SR_.x * sh, 0, OVERVIEW.base[2] + SR_.z * sh];
@@ -142,12 +171,13 @@ for (const [key_, L] of Object.entries(LAYOUT)) {
   deptRT[key_] = { group: g, L };
 }
 
-// brain centre (V3.6, AJ 6 Sep 2026): the particle nebula is RETIRED. The vault's wiki-link graph
-// is etched into the pod floor (src/brain.js); reads glint, writes add notes, G opens the full graph.
+// The illustrated Brain sits on the centre pod; reads glint, writes add notes,
+// and G opens the full note graph.
 let brain;
 {
   const bg = deptRT.brain.group;
   brain = initBrain({ scene, brainGroup: bg, getR: () => R, esc: (t) => esc(t), hud, toScreen: (p) => toScreen(p), getCamera: () => camera });
+  if (brain.artSprite) clickTargets.push(brain.artSprite);
   const plant = makePlant(); plant.position.set(6.2, 0.12, -5.8); bg.add(plant);
 }
 
@@ -257,7 +287,7 @@ for (const a of AGENTS) {
    V3.1: served, the list is the user's REAL MCP servers (GET /api/mcp) — the strip waits for it.
    Opened as a file the demo list plays at once. `mcp` is a thin proxy so the rest of the office
    never cares which it got. */
-let mcpImpl = null, mcpDark = false;
+let mcpImpl = null, mcpDark = false, mcpProviders = null;
 const mcp = {
   sprites: [],
   tick: (...a) => mcpImpl && mcpImpl.tick(...a),
@@ -267,10 +297,11 @@ const mcp = {
   startReveal: (...a) => mcpImpl && mcpImpl.startReveal(...a),
   setDark: on => { mcpDark = on; if (mcpImpl) mcpImpl.setDark(on); },
   setUsage: u => { mcpUsage = u; if (mcpImpl) mcpImpl.setUsage(u); }, // V3.6: the plan's gauge; kept until the strip exists
+  setProviders: p => { mcpProviders = p; if (mcpImpl) mcpImpl.setProviders(p); },
   isLive: () => !!(mcpImpl && mcpImpl.live),
 };
 let mcpUsage = null;
-loadConnectors().then(c => { mcpImpl = initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors: c }); if (mcpDark) mcpImpl.setDark(true); if (mcpUsage) mcpImpl.setUsage(mcpUsage); });
+loadConnectors().then(c => { mcpImpl = initMcp({ scene, hud, LAYOUT, DEPTS, FR, R, connectors: c }); if (mcpDark) mcpImpl.setDark(true); if (mcpUsage) mcpImpl.setUsage(mcpUsage); if (mcpProviders) mcpImpl.setProviders(mcpProviders); });
 applyTopbar(); // INDUSTRY PROFILE (12 Sep 2026): the demo company's name beside the brand
 
 // plants on outer corners
@@ -342,14 +373,15 @@ const BB_ROWS = profileRows() || {
     ['INVOICES ISSUED', () => Math.round(kv('invoices'))],
     ['BILLS PAID', () => STATS.billsPaid]],
   brain: [
-    ['NOTES INDEXED', () => brainNotes.toLocaleString('en-NZ')]],
+    ['NOTES INDEXED', () => brainNotes.toLocaleString(ptBR ? 'pt-BR' : 'en-NZ')]],
 };
-if (PROFILE && !BB_ROWS.brain) BB_ROWS.brain = [['NOTES INDEXED', () => brainNotes.toLocaleString('en-NZ')]];
+if (PROFILE && !BB_ROWS.brain) BB_ROWS.brain = [['NOTES INDEXED', () => brainNotes.toLocaleString(ptBR ? 'pt-BR' : 'en-NZ')]];
 for (const k of [...DEPT_KEYS, 'brain']) {
   const dept = DEPTS[k];
   const n = AGENTS.filter(a => a.dept === k).length;
   const b = document.createElement('div');
   b.className = 'badge';
+  if (k !== 'brain') b.title = ptBR ? `Abrir ${dept.name} e ver os indicadores` : `Open ${dept.name} and view metrics`;
   b.innerHTML = `
     <div class="b-name"><span class="dot" style="background:${dept.chip}"></span>${dept.short}<span class="live"></span></div>
     <div class="b-count">${k === 'brain' ? '<span class="b-num">∞</span><span class="b-lab">KNOWLEDGE</span>' : `<span class="b-num">${n}</span><span class="b-lab">AGENTS</span>`}</div>
@@ -362,9 +394,9 @@ for (const k of [...DEPT_KEYS, 'brain']) {
     else if (e.target.closest('.b-tasks') && tasks) { tasks.openFor(k); e.stopPropagation(); }
     else zoomToDept(k);
   });
-  if (k === 'brain') { // V3.6: a small tag names the etched floor and opens the graph (the big card stays retired)
+  if (k === 'brain') { // the small tag names the illustration and opens the note graph
     b.className = 'badge brainTag';
-    b.innerHTML = `<div class="b-name"><span class="dot" style="background:${dept.chip}"></span>THE BRAIN<b>${brain.state.notes.toLocaleString('en-NZ')}</b>NOTES</div>`;
+    b.innerHTML = `<div class="b-name"><span class="dot" style="background:${dept.chip}"></span>THE BRAIN<b>${brain.state.notes.toLocaleString(ptBR ? 'pt-BR' : 'en-NZ')}</b>NOTES</div>`;
     b.onclick = (e) => { e.stopPropagation(); brain.open(); };
     b.title = 'open the Brain (G)';
   }
@@ -641,7 +673,8 @@ function renderChat(id) {
 function renderActivity(id) {
   const r = R[id], v = r.v1;
   const task = rnd(v.tasks || ['Working through the queue'])
-    .replace('{co}', rnd(P.co)).replace('{person}', person()).replace('{count}', ri(3, 9));
+    .replace('{co}', rnd(P.co)).replace('{person}', person()).replace('{count}', ri(3, 9))
+    .replace('{n}', ri(6, 40)).replace('{segment}', 'clientes');
   document.getElementById('mNow').innerHTML = `NOW &nbsp;<b>${esc(task)}</b>`;
   document.getElementById('mStats').innerHTML = (v.stats || []).map(([l, val]) => `
     <div class="st"><div class="st-l">${esc(l)}</div><div class="st-v">${esc(String(typeof val === 'function' ? val() : val))}</div></div>`).join('');
@@ -656,7 +689,8 @@ function renderActivity(id) {
 /* camera target offset so the pod sits beside the rail, not behind it */
 function focusTarget(k, atPos) {
   const base = atPos ? [atPos.x, 0, atPos.z] : [LAYOUT[k].pos[0], 0, LAYOUT[k].pos[1] + 1];
-  const boardW = (tasks ? tasks.panelWidth() : 400) + 30; // V3.3: the task panel is always on the right
+  const panelW = tasks ? tasks.panelWidth() : 400;
+  const boardW = panelW ? panelW + 30 : 0;
   const zoom = atPos ? 3.3 : 2.5;
   const pxPerWorld = zoom * innerHeight / (2 * FR);
   const railW = Math.min(400, innerWidth * 0.92);
@@ -693,7 +727,6 @@ function enterFocus(k, pendingAgentId) {
   buildDeptRail(k);
   rail.className = RAIL_SIDE[k];
   rail.style.display = 'block';
-  document.body.classList.toggle('railLeft', RAIL_SIDE[k] === 'left'); // the Sahni.ai mark steps right of a docked-left rail
   // V3.4: the rail IS the chat — it opens on the department lead (or first agent) at once
   // (after the className reset above, which would otherwise drop the agentOpen state)
   const first = pendingAgentId || (AGENTS.find(x => x.dept === k && x.lead) || AGENTS.find(x => x.dept === k)).id;
@@ -715,7 +748,6 @@ function exitFocus(flyOut = true) {
   focusDimTarget = 0;
   vignette.classList.remove('on');
   rail.classList.remove('open', 'agentOpen');
-  document.body.classList.remove('railLeft');
   setTimeout(() => { if (!focused) rail.style.display = 'none'; }, 650);
   document.getElementById('overviewBtn').classList.remove('right');
   if (k !== 'brain' && deptRT[k] && deptRT[k].badge) deptRT[k].badge.style.display = '';
@@ -791,10 +823,17 @@ function openAgentRail(id, tab = 'chat', fly = true) {
   if (fly) { const t = focusTarget(r.a.dept, r.seat); flyTo(t.pos, t.zoom, 500); }
 }
 // V3: the board opening/closing re-centres the pod without leaving focus
-function reframe() {
-  if (!focused || focused === 'brain' || modalOpen) return;
-  const t = focusTarget(focused);
-  flyTo(t.pos, t.zoom, 600);
+function reframe(previousPanelWidth) {
+  if (focused && focused !== 'brain') {
+    const t = focusTarget(focused, modalOpen ? R[modalOpen].seat : null);
+    flyTo(t.pos, t.zoom, 500);
+    return;
+  }
+  if (typeof previousPanelWidth !== 'number') return;
+  const pxPerWorld = view.zoom * innerHeight / (2 * FR);
+  const shift = (tasks.panelWidth() - previousPanelWidth) / (2 * pxPerWorld);
+  const target = view.target.clone().addScaledVector(SR_, shift);
+  flyTo([target.x, target.y, target.z], view.zoom, 500);
 }
 function railBack() { // V3.4: "back" = back to the pod view, chat stays on the lead
   if (!focused || focused === 'brain') return;
@@ -831,12 +870,12 @@ function sendChat(text) {
   const low = text.toLowerCase();
   setTimeout(() => {
     if (tasks && tasks.pendingReject(id)) { tasks.rejectLive(id, text); return; } // V3.5: the line after REJECT is the note the agent reworks with
-    if (r.state === 'stuck' && /\b(approve|reject)\b/.test(low)) {
-      resolveApproval(id, /approve/.test(low));
+    if (r.state === 'stuck' && /\b(approve|reject|aprovar|rejeitar)\b/.test(low)) {
+      resolveApproval(id, /\b(approve|aprovar)\b/.test(low));
       return;
     }
-    const rv = tasks && tasks.isLive() && text.match(/^\s*revise\s*[:\-–]\s*(.+)$/i); // LIVE: "revise: …" re-runs the last deliverable
-    if (rv && tasks.revise(id, rv[1].trim())) { chatPush(id, { who: 'agent', text: 'On it — revising now. It will land here when it is ready.' }); return; }
+    const rv = tasks && tasks.isLive() && text.match(/^\s*(?:revise|revisar)\s*[:\-–]\s*(.+)$/i); // LIVE: "revise: …" re-runs the last deliverable
+    if (rv && tasks.revise(id, rv[1].trim())) { chatPush(id, { who: 'agent', text: ptBR ? 'Certo — estou revisando. O resultado aparecerá aqui quando estiver pronto.' : 'On it — revising now. It will land here when it is ready.' }); return; }
     const tr = tasks && tasks.handleChat(id, text); // "add task: …" / "what's on the board"
     if (tr) { chatPush(id, { who: 'agent', text: tr }); return; }
     if (tasks && tasks.isLive()) { // LIVE: a real conversation with the agent, grounded in the brain
@@ -851,7 +890,7 @@ function sendChat(text) {
           if (j.read) for (const n of j.read.slice(0, 2)) brain.readNote(id, n);
           if (j.tools && j.tools.length) mcp.onToolsUsed(id, j.tools);
         })
-        .catch(e => chatPush(id, { who: 'agent', text: `I couldn't reach Claude (${e.message}).` }));
+        .catch(e => chatPush(id, { who: 'agent', text: ptBR ? `Não consegui acessar o Claude (${e.message}).` : `I couldn't reach Claude (${e.message}).` }));
       return;
     }
     const hit = (r.v1.chat || []).find(c => c.k.some(k => low.includes(k)));
@@ -885,7 +924,7 @@ function mockupFor(id) {
       <div class="d-line"><span>Scope</span><b>matches the brief ✓</b></div>
       <div class="d-p">Hours and scope check out — only the rate is off, and there's no signed variation covering it. Recommend holding payment and querying the rate before it's paid.</div></div>`;
     case 'piper': return `<div class="mk mk-doc">
-      <div class="d-brand">AGENTS OFFICE — PROPOSAL</div>
+      <div class="d-brand">AGENT DISTRICT — PROPOSAL</div>
       <div class="d-title">Ridgeline Property Group</div>
       <div class="d-line"><span>Seats</span><b>12</b></div>
       <div class="d-line"><span>Plan</span><b>Growth</b></div>
@@ -904,7 +943,7 @@ function mockupFor(id) {
       <div class="ph-sub">connect rates nearly double 10:00–11:30am — across 40,000 dials</div>
       <div class="ph-ui"><span>♥ 2.4k</span><span>💬 118</span><span>↗ share</span></div></div>`;
     case 'ada': return `<div class="mk mk-ad">
-      <div class="ad-head"><div class="ad-av"></div><div><div class="ad-who">sahni.ai</div><div class="ad-sp">Sponsored</div></div></div>
+      <div class="ad-head"><div class="ad-av"></div><div><div class="ad-who">icodev.tech</div><div class="ad-sp">Sponsored</div></div></div>
       <div class="ad-text">Cold call anxiety? Your first 5 dials decide your whole day…</div>
       <div class="ad-media" style="background:linear-gradient(135deg, ${chip}55, ${chip}22)">“the 10am rule — call when they answer”</div>
       <div class="ad-foot"><span class="ad-hl">Start your free trial</span><span class="ad-cta">SIGN UP</span></div>
@@ -977,8 +1016,8 @@ function resolveApproval(id, approved) {
   if (tasks) tasks.onResolve(id, approved);
   chatPush(id, {
     who: 'agent',
-    text: approved ? '✓ Approved — actioning it now. I\'ll log the result in my activity.'
-                   : '✗ Understood — parked. I\'ll adjust and come back with a better version.',
+    text: approved ? (ptBR ? '✓ Aprovado — vou executar agora e registrar o resultado na atividade.' : '✓ Approved — actioning it now. I\'ll log the result in my activity.')
+                   : (ptBR ? '✗ Entendido — vou ajustar e trazer uma nova versão.' : '✗ Understood — parked. I\'ll adjust and come back with a better version.'),
   });
   syncApprovals();
 }
@@ -1291,8 +1330,29 @@ function tickLOD() {
   const pillA = smooth(1.45, 1.85, z); // pills stay on at near — they name the agents
   // billboards persist at every zoom (v1 rule) — slightly larger when far, compact when near
   const badgeScale = 1.02 - 0.3 * smooth(1.2, 2.6, z);
+  const compactMobile = innerWidth <= 700 && !focused;
+  const mobileSlots = { marketing: 0, emails: 1, delivery: 2, sales: 3, ops: 4, fin: 5 };
   for (const [k, d] of Object.entries(deptRT)) {
     if (focused === k && k !== 'brain') continue; // this billboard is docked in the rail
+    if (compactMobile) {
+      if (!document.body.classList.contains('panelCollapsed')) {
+        d.badge.style.opacity = 0;
+        d.badge.style.pointerEvents = 'none';
+        continue;
+      }
+      const slotWidth = Math.floor((innerWidth - 36) / 2);
+      const index = mobileSlots[k];
+      if (index !== undefined) {
+        d.badge.style.width = slotWidth + 'px';
+        d.badge.style.transform = `translate(${12 + (index % 2) * (slotWidth + 12)}px,${76 + Math.floor(index / 2) * 82}px)`;
+      } else {
+        d.badge.style.transform = `translate(${innerWidth / 2}px,330px) translateX(-50%)`;
+      }
+      d.badge.style.opacity = 1;
+      d.badge.style.pointerEvents = 'auto';
+      continue;
+    }
+    d.badge.style.width = '';
     let [sx, sy] = toScreen(d.badgeAnchor);
     // keep billboards fully on screen (camera-readability rule)
     const bh = d.badge.offsetHeight * badgeScale, bw = d.badge.offsetWidth * badgeScale;
@@ -1328,7 +1388,7 @@ function tickLOD() {
 function tickClock() {
   const d = new Date();
   document.getElementById('clock').textContent =
-    d.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    d.toLocaleTimeString(ptBR ? 'pt-BR' : 'en-NZ', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: !ptBR });
 }
 setInterval(tickClock, 1000); tickClock();
 
@@ -1359,9 +1419,12 @@ function applyRoster(agents) {
     r.pill.innerHTML = (r.a.lead ? '<span class="star">★</span>' : '') + esc(a.name);
     r.v1 = r.v1 || {};
     r.v1.role = a.role || r.v1.role || ''; r.v1.tagline = a.does || r.v1.tagline || '';
-    r.v1.greeting = `${a.does || 'I am ' + a.name + '.'} Give me a task in the bar on the right, or ask me something here.` +
-      (a.interviewer && a.setUp === false ? ` Nothing in this department is yours yet: say "set up" and I will ask you five questions about how it works here, then write it down for the team.` : '');
-    r.v1.chips = a.interviewer && a.setUp === false ? ['set up', 'What can you do for me?', 'What tools can you use?'] : ['What are you working on?', 'What can you do for me?', 'What tools can you use?'];
+    r.v1.greeting = ptBR
+      ? `${a.does || 'Sou ' + a.name + '.'} Envie uma tarefa pela barra à direita ou converse comigo aqui.` + (a.interviewer && a.setUp === false ? ' Este departamento ainda precisa ser configurado: diga "configurar" e farei cinco perguntas para registrar como sua equipe trabalha.' : '')
+      : `${a.does || 'I am ' + a.name + '.'} Give me a task in the bar on the right, or ask me something here.` + (a.interviewer && a.setUp === false ? ` Nothing in this department is yours yet: say "set up" and I will ask you five questions about how it works here, then write it down for the team.` : '');
+    r.v1.chips = ptBR
+      ? (a.interviewer && a.setUp === false ? ['configurar', 'Como pode me ajudar?', 'Quais ferramentas você usa?'] : ['O que está fazendo?', 'Como pode me ajudar?', 'Quais ferramentas você usa?'])
+      : (a.interviewer && a.setUp === false ? ['set up', 'What can you do for me?', 'What tools can you use?'] : ['What are you working on?', 'What can you do for me?', 'What tools can you use?']);
     if (chatHist[a.id] && chatHist[a.id][0] && chatHist[a.id][0].who === 'agent') chatHist[a.id][0].text = r.v1.greeting;
     if (modalOpen === a.id) openAgentRail(a.id, modalTab, false);
   }
@@ -1370,7 +1433,7 @@ function applyRoster(agents) {
 tasks = initTasks({
   hud, R, deptRT, RAIL_SIDE, spawnEmote, chatPush, chatHist, feedPush, zoomToApproval, enterFocus, openAgent, esc,
   brainWrite: (id, title) => brain.write(id, title), brain,
-  onLive: (h) => { document.querySelector('#topbar .brand .ver').textContent = 'BETA'; document.title = `${h.name} — Agents Office`; brain.setOwner(h.name); brain.setQuiet(true); applyRoster(h.agents); },
+  onLive: (h) => { brain.setOwner(h.name); brain.setQuiet(true); applyRoster(h.agents); mcp.setProviders(h.providers); },
   onTools: (agentId, keys) => mcp.onToolsUsed(agentId, keys),
   requestApproval, setStuck: setStuckLive,
   onUsage: (u) => { if (mcp && mcp.setUsage) mcp.setUsage(u); }, // V3.6: the plan's gauge in the top bar
@@ -1409,6 +1472,7 @@ resize();
 window.CC = { hero, flyTo, zoomToDept, zoomOut, zoomToApproval, requestApproval, openAgent, view, applyCamera, R, emotes,
   setCam, setDark, brain, connectorReveal: () => mcp.startReveal(performance.now()),
   toggleBoard: () => tasks.toggle(), addTask: (agentId, title) => tasks.addTask(agentId, title), tasks, routines: () => tasks.routines };
+localizeUI();
 
 let last = performance.now();
 function loop(now) {

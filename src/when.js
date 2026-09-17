@@ -13,6 +13,9 @@
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const PT_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const PT_WEEKLY = ['Domingos', 'Segundas-feiras', 'Terças-feiras', 'Quartas-feiras', 'Quintas-feiras', 'Sextas-feiras', 'Sábados'];
+const DEFAULT_LOCALE = typeof location !== 'undefined' && !/^en(?:-|$)/i.test(new URLSearchParams(location.search).get('lang') || 'pt-BR') ? 'pt-BR' : 'en';
 const WORD_TIMES = { noon: '12:00', midday: '12:00', lunchtime: '12:30', midnight: '00:00', morning: '08:00', mornings: '08:00', afternoon: '14:00', afternoons: '14:00', evening: '17:00', evenings: '17:00', night: '20:00', nights: '20:00' };
 const pad = n => String(n).padStart(2, '0');
 const hhmm = (h, m = 0) => `${pad(h)}:${pad(m)}`;
@@ -44,12 +47,46 @@ function dayIndex(word) {
 }
 const cut = (s, span) => (s.slice(0, span[0]) + ' ' + s.slice(span[1]));
 function tidy(s) { // the task text with the schedule taken out
-  return s.replace(/\s+/g, ' ').replace(/^[\s,;:.\-–—]+|[\s,;:.\-–—]+$/g, '').replace(/^(?:and|then|please|to)\s+/i, '').replace(/\s+,/g, ',').trim();
+  return s.replace(/\s+/g, ' ').replace(/^[\s,;:.\-–—]+|[\s,;:.\-–—]+$/g, '').replace(/^(?:and|then|please|to|e|então|por favor)\s+/i, '').replace(/\s+,/g, ',').trim();
+}
+
+function parsePortuguese(input) {
+  let s = input;
+  const minute = /(?:^|\s)a cada\s+(\d+)\s+minutos?(?=\s|,|$)/i.exec(s);
+  if (minute) return { when: { kind: 'minutes', every: Math.max(1, +minute[1]) }, text: tidy(cut(s, [minute.index, minute.index + minute[0].length])) };
+  const hour = /(?:^|\s)(?:a cada\s+(\d+)\s+horas?|de hora em hora)(?=\s|,|$)/i.exec(s);
+  if (hour) return { when: { kind: 'hourly', every: Math.max(1, +(hour[1] || 1)) }, text: tidy(cut(s, [hour.index, hour.index + hour[0].length])) };
+
+  let kind, days;
+  const workdays = /(?:^|\s)(?:todos? os? dias? úteis|todo dia útil|de segunda(?:-feira)? a sexta(?:-feira)?)(?=\s|,|$)/i.exec(s);
+  const daily = /(?:^|\s)(?:todos? os? dias?|diariamente)(?=\s|,|$)/i.exec(s);
+  const weekly = /(?:^|\s)(?:toda\s+semana|semanalmente)(?=\s|,|$)/i.exec(s);
+  const named = /(?:^|\s)(?:todas?\s+(?:as?\s+)?)?(segundas?|terças?|tercas?|quartas?|quintas?|sextas?|sábados?|sabados?|domingos?)(?:-feiras?)?(?=\s|,|$)/i.exec(s);
+  const chosen = workdays || daily || named || weekly;
+  if (!chosen) return null;
+  if (workdays) kind = 'weekdays';
+  else if (daily) kind = 'daily';
+  else if (named) {
+    kind = 'weekly';
+    const names = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+    const normalized = named[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/s$/, '');
+    days = [names.findIndex(x => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '') === normalized)];
+  } else { kind = 'weekly'; days = []; }
+  s = cut(s, [chosen.index, chosen.index + chosen[0].length]);
+  const time = /(?:^|\s)(?:às?\s+|as\s+)?(\d{1,2})(?:h|:)(\d{2})?(?=\s|,|$)|(?:^|\s)às?\s+(\d{1,2})(?=\s|,|$)/i.exec(s);
+  let at = null;
+  if (time) {
+    at = clock(time[1] ?? time[3], time[2] || 0);
+    if (at) s = cut(s, [time.index, time.index + time[0].length]);
+  }
+  return { when: { kind, ...(kind === 'weekly' ? { days } : {}), at }, text: tidy(s), needsDay: kind === 'weekly' && !days.length, needsTime: !at };
 }
 
 /** Plain words → { when, text, guessed, needsTime, needsDay } or null when there is no schedule in the sentence. */
 export function parseWhen(input) {
   const src = String(input || '');
+  const portuguese = parsePortuguese(src);
+  if (portuguese) return portuguese;
   let s = src, m;
   // every N minutes (filming cadence — accepted, never offered)
   if ((m = /\bevery\s+(\d+)\s*(?:min|mins|minutes?)\b/i.exec(s))) {
@@ -127,17 +164,31 @@ export function fromPicker(cadence, at, start) {
 }
 const startMs = when => when && /^\d{4}-\d{2}-\d{2}$/.test(when.start || '') ? new Date(when.start + 'T00:00:00').getTime() : null;
 /** "12 Oct" — a short date for the words the office says back. */
-export const shortDate = ts => { const d = new Date(ts); return `${d.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]}`; };
+export const shortDate = (ts, locale = DEFAULT_LOCALE) => { const d = new Date(ts); return `${d.getDate()} ${(locale === 'pt-BR' ? ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])[d.getMonth()]}`; };
 
 /** A schedule → the words the office says back. */
-export function describe(when) {
+export function describe(when, locale = DEFAULT_LOCALE) {
   if (!when) return '';
-  const base = describeBase(when);
+  const base = describeBase(when, locale);
   const s = startMs(when);
-  return base && s && s > Date.now() ? `${base} · from ${shortDate(s)}` : base;
+  return base && s && s > Date.now() ? `${base} · ${locale === 'pt-BR' ? 'a partir de' : 'from'} ${shortDate(s, locale)}` : base;
 }
-function describeBase(when) {
+function describeBase(when, locale) {
   const at = when.at ? ' · ' + when.at : '';
+  if (locale === 'pt-BR') {
+    switch (when.kind) {
+      case 'minutes': return `a cada ${when.every} min`;
+      case 'hourly': return (when.every > 1 ? `a cada ${when.every} horas` : 'a cada hora') + (when.from ? ` ${when.from}–${when.to}` : '') + (when.weekdaysOnly ? ' · dias úteis' : '');
+      case 'daily': return 'todos os dias' + at;
+      case 'weekdays': return 'todos os dias úteis' + at;
+      case 'weekly': {
+        const d = when.days || [];
+        if (d.length === 7) return 'todos os dias' + at;
+        if (d.length === 2 && d.includes(0) && d.includes(6)) return 'fins de semana' + at;
+        return (d.length === 1 ? PT_WEEKLY[d[0]] : d.map(i => PT_SHORT[i]).join(', ')) + at;
+      }
+    }
+  }
   switch (when.kind) {
     case 'minutes': return `every ${when.every} min`;
     case 'hourly': return (when.every > 1 ? `every ${when.every} hours` : 'every hour') + (when.from ? ` ${when.from}–${when.to}` : '') + (when.weekdaysOnly ? ' · weekdays' : '');
@@ -201,19 +252,19 @@ export function occurrences(when, from, to, limit = 400) {
   return out;
 }
 /** "in 2 min" · "at 08:00" · "Mon 09:00" · "Fri 16:00" — the countdown the cards show. */
-export function untilText(ts, now = Date.now()) {
+export function untilText(ts, now = Date.now(), locale = DEFAULT_LOCALE) {
   if (!ts) return '—';
   const ms = ts - now;
-  if (ms <= 0) return 'now';
+  if (ms <= 0) return locale === 'pt-BR' ? 'agora' : 'now';
   const m = Math.round(ms / 60000);
-  if (m < 1) return 'in under a minute';
-  if (m < 60) return `in ${m} min`;
+  if (m < 1) return locale === 'pt-BR' ? 'em menos de um minuto' : 'in under a minute';
+  if (m < 60) return locale === 'pt-BR' ? `em ${m} min` : `in ${m} min`;
   const d = new Date(ts), today = new Date(now);
   const sameDay = d.toDateString() === today.toDateString();
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
   const t = hhmm(d.getHours(), d.getMinutes());
-  if (sameDay) return `at ${t}`;
-  if (d.toDateString() === tomorrow.toDateString()) return `tomorrow ${t}`;
-  return `${SHORT[d.getDay()]} ${t}`;
+  if (sameDay) return locale === 'pt-BR' ? `às ${t}` : `at ${t}`;
+  if (d.toDateString() === tomorrow.toDateString()) return locale === 'pt-BR' ? `amanhã às ${t}` : `tomorrow ${t}`;
+  return locale === 'pt-BR' ? `${PT_SHORT[d.getDay()]} às ${t}` : `${SHORT[d.getDay()]} ${t}`;
 }
 export const DAY_NAMES = DAYS;
